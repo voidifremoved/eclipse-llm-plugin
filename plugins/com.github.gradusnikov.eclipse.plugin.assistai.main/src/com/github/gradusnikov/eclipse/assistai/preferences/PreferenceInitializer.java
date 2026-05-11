@@ -3,6 +3,7 @@ package com.github.gradusnikov.eclipse.assistai.preferences;
 import org.eclipse.core.runtime.preferences.AbstractPreferenceInitializer;
 import org.eclipse.e4.core.di.annotations.Creatable;
 import org.eclipse.jface.preference.IPreferenceStore;
+import org.eclipse.jface.preference.IPersistentPreferenceStore;
 
 import java.util.UUID;
 
@@ -65,6 +66,14 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer
         if ( store.getString(PreferenceConstants.ASSISTAI_MCP_HTTP_AUTH_TOKEN).isBlank() )
         {
             store.setValue(PreferenceConstants.ASSISTAI_MCP_HTTP_AUTH_TOKEN, UUID.randomUUID().toString());
+            if (store instanceof IPersistentPreferenceStore persistentStore)
+            {
+                try {
+                    persistentStore.save();
+                } catch (java.io.IOException e) {
+                    e.printStackTrace();
+                }
+            }
         }
 
         // Initialize Code Completion defaults
