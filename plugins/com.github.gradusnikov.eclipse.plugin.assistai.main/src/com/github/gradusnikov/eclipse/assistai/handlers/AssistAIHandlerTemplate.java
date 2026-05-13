@@ -6,7 +6,7 @@ import org.eclipse.swt.widgets.Shell;
 
 import com.github.gradusnikov.eclipse.assistai.prompt.ChatMessageFactory;
 import com.github.gradusnikov.eclipse.assistai.prompt.Prompts;
-import com.github.gradusnikov.eclipse.assistai.view.ChatViewPresenter;
+import com.github.gradusnikov.eclipse.assistai.agent.AgentViewPresenter;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -16,7 +16,7 @@ public class AssistAIHandlerTemplate
     @Inject
     protected ChatMessageFactory chatMessageFactory;
     @Inject
-    protected ChatViewPresenter viewPresenter;
+    protected AgentViewPresenter viewPresenter;
     
     protected final Prompts type;
     

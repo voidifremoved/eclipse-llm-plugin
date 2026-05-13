@@ -301,3 +301,7 @@ summary {
     opacity: 1;
   }
 }
+
+.function-call summary::before {
+  content: '🛠 ';
+}

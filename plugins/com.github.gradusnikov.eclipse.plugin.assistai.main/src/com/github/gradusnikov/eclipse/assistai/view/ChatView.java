@@ -45,6 +45,7 @@ import org.eclipse.swt.events.VerifyListener;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.GC;
 import org.eclipse.swt.graphics.Image;
+import com.github.gradusnikov.eclipse.assistai.agent.AgentViewPresenter;
 import org.eclipse.swt.graphics.ImageData;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.Rectangle;
@@ -86,7 +87,7 @@ public class ChatView
     private ILog                 logger;
     
     @Inject
-    private ChatViewPresenter     presenter;
+    private AgentViewPresenter     presenter;
     
     @Inject
     private DropManager          dropManager;
