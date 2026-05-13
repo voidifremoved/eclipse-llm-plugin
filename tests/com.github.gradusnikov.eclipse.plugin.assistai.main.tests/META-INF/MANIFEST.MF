@@ -22,4 +22,3 @@ Require-Bundle: junit-jupiter-api,
 Automatic-Module-Name: com.github.gradusnikov.eclipse.plugin.assistai.main.tests
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Import-Package: org.hamcrest;version="[3.0.0,4.0.0)"
-
