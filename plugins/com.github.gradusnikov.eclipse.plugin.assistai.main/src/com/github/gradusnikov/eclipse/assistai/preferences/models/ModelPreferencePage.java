@@ -2,8 +2,6 @@ package com.github.gradusnikov.eclipse.assistai.preferences.models;
 
 import java.util.Arrays;
 
-import org.eclipse.e4.core.contexts.ContextInjectionFactory;
-import org.eclipse.e4.core.contexts.IEclipseContext;
 import org.eclipse.jface.preference.BooleanFieldEditor;
 import org.eclipse.jface.preference.ComboFieldEditor;
 import org.eclipse.jface.preference.FieldEditorPreferencePage;
@@ -46,8 +44,7 @@ public class ModelPreferencePage extends FieldEditorPreferencePage implements IW
     @Override
     public void init( IWorkbench workbench )
     {
-        IEclipseContext eclipseContext = workbench.getService( IEclipseContext.class );
-        repository = ContextInjectionFactory.make( ModelApiDescriptorRepository.class, eclipseContext );
+        repository = Activator.getDefault().getModelApiDescriptorRepository();
     }
 
 
