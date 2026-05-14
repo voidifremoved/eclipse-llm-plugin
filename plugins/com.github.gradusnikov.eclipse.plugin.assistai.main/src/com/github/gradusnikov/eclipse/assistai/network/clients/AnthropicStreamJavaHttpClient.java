@@ -49,6 +49,7 @@ import jakarta.inject.Inject;
  * This class allows subscribing to responses received from the Anthropic API and processes the chat completions.
  */
 @Creatable
+@Deprecated
 public class AnthropicStreamJavaHttpClient extends AbstractLanguageModelClient
 {
     // Publisher is created fresh for each run() call to avoid issues with closed publishers

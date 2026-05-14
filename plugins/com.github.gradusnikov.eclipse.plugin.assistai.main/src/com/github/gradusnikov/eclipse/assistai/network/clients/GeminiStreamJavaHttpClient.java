@@ -44,6 +44,7 @@ import jakarta.inject.Inject;
  * This class allows subscribing to responses received from the Gemini API and processes the chat completions.
  */
 @Creatable
+@Deprecated
 public class GeminiStreamJavaHttpClient extends AbstractLanguageModelClient
 {
     private SubmissionPublisher<Incoming> publisher;

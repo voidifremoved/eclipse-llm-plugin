@@ -31,6 +31,7 @@ import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import jakarta.inject.Inject;
 
 @Creatable
+@Deprecated
 public class ExecuteFunctionCallJob extends Job
 {
     private static final String           JOB_NAME              = AssistAIJobConstants.JOB_PREFIX + " execute function call";

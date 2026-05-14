@@ -20,6 +20,7 @@ import jakarta.inject.Singleton;
 
 @Creatable
 @Singleton
+@Deprecated
 public class ChatLanguageModelHttpClientProvider extends AbstractLanguageModelHttpClientProvider
 {
     @Inject

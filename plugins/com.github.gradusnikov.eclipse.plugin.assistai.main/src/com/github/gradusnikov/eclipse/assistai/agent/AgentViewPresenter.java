@@ -1,11 +1,19 @@
 package com.github.gradusnikov.eclipse.assistai.agent;
 
+import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 import org.eclipse.e4.core.di.annotations.Creatable;
+import org.eclipse.e4.ui.di.UISynchronize;
+import org.eclipse.jface.preference.IPreferenceStore;
+import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.ImageData;
+import org.eclipse.swt.graphics.ImageLoader;
 import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.FileDialog;
 import org.eclipse.core.runtime.ILog;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.resources.IProject;
@@ -14,7 +22,10 @@ import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.IWorkbenchPage;
 
+import com.github.gradusnikov.eclipse.assistai.Activator;
 import com.github.gradusnikov.eclipse.assistai.chat.Attachment;
+import com.github.gradusnikov.eclipse.assistai.chat.Attachment.FileContentAttachment;
+import static com.github.gradusnikov.eclipse.assistai.tools.ImageUtilities.createPreview;
 import com.github.gradusnikov.eclipse.assistai.chat.ChatMessage;
 import com.github.gradusnikov.eclipse.assistai.prompt.PromptRepository;
 import com.github.gradusnikov.eclipse.assistai.resources.IResourceCacheListener;
@@ -43,9 +54,14 @@ public class AgentViewPresenter implements IResourceCacheListener
     @Inject private ILog logger;
     @Inject private CodeEditingService codeEditingService;
     @Inject private ApplyPatchWizardHelper applyPatchWizardHelper;
+    @Inject private UISynchronize uiSync;
 
     // We use Object to avoid OSGi visibility errors for reactor.core.Disposable
     private Object currentStream;
+
+    private final IPreferenceStore preferences = Activator.getDefault().getPreferenceStore();
+    private static final String LAST_SELECTED_DIR_KEY = "lastSelectedDirectory";
+    private final List<Attachment> attachments = new ArrayList<>();
 
     public void onSendUserMessage(String text)
     {
@@ -161,19 +177,91 @@ public class AgentViewPresenter implements IResourceCacheListener
     }
 
     public void onRemoveAttachment(int index) {
-        // Ignored
+        if (index >= 0 && index < attachments.size()) {
+            attachments.remove(index);
+            applyToView(view -> {
+                view.setAttachments(attachments);
+            });
+        }
     }
 
     public void onAddAttachment() {
-        // Ignored
+        Display display = PlatformUI.getWorkbench().getDisplay();
+        if (Objects.isNull(display)) {
+            logger.error("No active display");
+            return;
+        }
+
+        uiSync.asyncExec(() -> {
+            FileDialog fileDialog = new FileDialog(display.getActiveShell(), SWT.OPEN);
+            fileDialog.setText("Select an Image");
+
+            // Retrieve the last selected directory from the preferences
+            String lastSelectedDirectory = preferences.getString(LAST_SELECTED_DIR_KEY);
+            fileDialog.setFilterPath(lastSelectedDirectory);
+
+            fileDialog.setFilterExtensions(new String[] { "*.png", "*.jpeg", "*.jpg" });
+            fileDialog.setFilterNames(new String[] { "PNG files (*.png)", "JPEG files (*.jpeg, *.jpg)" });
+
+            String selectedFilePath = fileDialog.open();
+
+            if (selectedFilePath != null) {
+                // Save the last selected directory back to the preferences
+                String newLastSelectedDirectory = new File(selectedFilePath).getParent();
+                preferences.putValue(LAST_SELECTED_DIR_KEY, newLastSelectedDirectory);
+
+                ImageData[] imageDataArray = new ImageLoader().load(selectedFilePath);
+                if (imageDataArray.length > 0) {
+                    attachments.add(new Attachment.ImageAttachment(imageDataArray[0], createPreview(imageDataArray[0])));
+                    applyToView(messageView -> {
+                        messageView.setAttachments(attachments);
+                    });
+                }
+            }
+        });
     }
 
     public void onReplayLastMessage() {
-        // Ignored
+        logger.info("Replaying last message with current model");
+        AgentSession session = sessionManager.getOrCreateSession();
+        List<ChatMessage> history = session.getHistory();
+        if (history.isEmpty()) {
+            return;
+        }
+
+        if ("assistant".equals(history.get(history.size() - 1).getRole())) {
+            ChatMessage lastMessage = history.get(history.size() - 1);
+            session.removeLastMessage();
+            applyToView(view -> {
+                view.removeMessage(lastMessage.getId());
+            });
+        }
+
+        // We need to re-send the last user message, but without adding it to history again
+        // Actually, the simplest way is to remove the last user message as well and re-send it through onSendUserMessage
+        List<ChatMessage> updatedHistory = session.getHistory();
+        if (!updatedHistory.isEmpty() && "user".equals(updatedHistory.get(updatedHistory.size() - 1).getRole())) {
+            ChatMessage lastUserMessage = updatedHistory.get(updatedHistory.size() - 1);
+            session.removeLastMessage();
+            applyToView(view -> {
+                view.removeMessage(lastUserMessage.getId());
+            });
+            onSendUserMessage(lastUserMessage.getContent(), lastUserMessage.getAttachments());
+        }
     }
 
     public void onAttachmentAdded(ImageData imageData) {
-        // Ignored
+        attachments.add(new Attachment.ImageAttachment(imageData, createPreview(imageData)));
+        applyToView(messageView -> {
+            messageView.setAttachments(attachments);
+        });
+    }
+
+    public void onAttachmentAdded(FileContentAttachment attachment) {
+        attachments.add(attachment);
+        applyToView(messageView -> {
+            messageView.setAttachments(attachments);
+        });
     }
 
     public void onCopyCode(String codeBlock) {
@@ -284,6 +372,10 @@ public class AgentViewPresenter implements IResourceCacheListener
     }
 
     public void onRemoveMessage(String messageId) {
-        // Ignored
+        AgentSession session = sessionManager.getOrCreateSession();
+        session.removeMessageById(messageId);
+        applyToView(view -> {
+            view.removeMessage(messageId);
+        });
     }
 }

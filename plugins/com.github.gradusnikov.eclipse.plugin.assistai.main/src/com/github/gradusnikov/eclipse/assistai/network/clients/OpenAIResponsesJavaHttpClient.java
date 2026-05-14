@@ -46,6 +46,7 @@ import jakarta.inject.Inject;
  * stateful conversations, and improved reasoning capabilities.
  */
 @Creatable
+@Deprecated
 public class OpenAIResponsesJavaHttpClient extends AbstractLanguageModelClient
 {
     private final State NULL_STATE = new NullState();

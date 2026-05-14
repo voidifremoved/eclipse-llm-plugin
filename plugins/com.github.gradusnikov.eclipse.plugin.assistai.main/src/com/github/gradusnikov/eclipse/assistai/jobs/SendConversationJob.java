@@ -15,6 +15,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Provider;
 
 @Creatable
+@Deprecated
 public class SendConversationJob extends Job
 {
     @Inject

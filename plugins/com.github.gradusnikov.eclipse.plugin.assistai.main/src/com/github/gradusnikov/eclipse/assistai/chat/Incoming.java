@@ -1,5 +1,6 @@
 package com.github.gradusnikov.eclipse.assistai.chat;
 
+@Deprecated
 public record Incoming( Type type, Object payload )
 {
     public enum Type

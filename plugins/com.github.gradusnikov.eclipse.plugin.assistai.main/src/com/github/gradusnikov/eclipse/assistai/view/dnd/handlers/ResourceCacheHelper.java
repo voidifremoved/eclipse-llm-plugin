@@ -27,7 +27,7 @@ import com.github.gradusnikov.eclipse.assistai.resources.ResourceCache;
 import com.github.gradusnikov.eclipse.assistai.resources.ResourceDescriptor;
 import com.github.gradusnikov.eclipse.assistai.resources.ResourceDescriptor.ResourceType;
 import com.github.gradusnikov.eclipse.assistai.tools.ContentTypeDetector;
-import com.github.gradusnikov.eclipse.assistai.view.ChatViewPresenter;
+import com.github.gradusnikov.eclipse.assistai.agent.AgentViewPresenter;
 import com.google.common.collect.Sets;
 
 import jakarta.annotation.PostConstruct;
@@ -53,7 +53,7 @@ public class ResourceCacheHelper
     private ContentTypeDetector contentTypeDetector;
     
     @Inject
-    private ChatViewPresenter presenter;
+    private AgentViewPresenter presenter;
     
     @Inject
     private ILog logger;
