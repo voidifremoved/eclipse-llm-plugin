@@ -117,4 +117,33 @@
     <category name="assistai-deps"/>
   </bundle>
 
+  <!-- Spring AI and providers -->
+  <bundle id="wrapped.org.springframework.ai.spring-ai-model" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="wrapped.org.springframework.ai.spring-ai-client-chat" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="wrapped.org.springframework.ai.spring-ai-commons" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="wrapped.org.springframework.ai.spring-ai-openai" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="wrapped.org.springframework.ai.spring-ai-anthropic" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="wrapped.org.springframework.ai.spring-ai-vertex-ai-gemini" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="wrapped.org.springframework.ai.spring-ai-mcp" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="wrapped.org.springframework.ai.spring-ai-retry" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="wrapped.com.anthropic.anthropic-java" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+
 </site>
