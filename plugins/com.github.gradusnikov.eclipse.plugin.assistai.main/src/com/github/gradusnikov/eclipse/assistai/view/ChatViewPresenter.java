@@ -75,6 +75,7 @@ import jakarta.inject.Singleton;
 
 @Creatable
 @Singleton
+@Deprecated
 public class ChatViewPresenter implements IResourceCacheListener
 {
     @Inject

@@ -16,6 +16,7 @@ import com.github.gradusnikov.eclipse.assistai.resources.ResourceCache;
 import io.modelcontextprotocol.spec.McpSchema.Tool;
 import jakarta.inject.Inject;
 
+@Deprecated
 public abstract class AbstractLanguageModelClient implements LanguageModelClient
 {
     protected ModelApiDescriptor model;

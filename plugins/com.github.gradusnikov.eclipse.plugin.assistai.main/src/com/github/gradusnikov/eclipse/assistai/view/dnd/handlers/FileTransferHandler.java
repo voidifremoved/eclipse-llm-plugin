@@ -9,7 +9,7 @@ import org.eclipse.swt.dnd.FileTransfer;
 import org.eclipse.swt.dnd.Transfer;
 import org.eclipse.swt.graphics.ImageData;
 
-import com.github.gradusnikov.eclipse.assistai.view.ChatViewPresenter;
+import com.github.gradusnikov.eclipse.assistai.agent.AgentViewPresenter;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -30,7 +30,7 @@ public class FileTransferHandler implements ITransferHandler
     private ResourceCacheHelper resourceCacheHelper;
 
     @Inject
-    private ChatViewPresenter presenter;
+    private AgentViewPresenter presenter;
 
     @Inject
     private ILog logger;

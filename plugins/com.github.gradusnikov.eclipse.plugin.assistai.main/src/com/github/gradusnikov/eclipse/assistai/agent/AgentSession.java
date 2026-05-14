@@ -90,6 +90,20 @@ public class AgentSession
         conversationHistory.add(new org.springframework.ai.chat.messages.SystemMessage(systemPrompt));
     }
 
+    public void removeLastMessage() {
+        if (!conversationHistory.isEmpty()) {
+            conversationHistory.remove(conversationHistory.size() - 1);
+        }
+    }
+
+    public void removeMessageById(String id) {
+        // Find matching message by checking its adapted representation
+        conversationHistory.removeIf(msg -> {
+            ChatMessage chatMsg = MessageAdapter.fromSpringAi(msg);
+            return id.equals(chatMsg.getId());
+        });
+    }
+
     public List<ChatMessage> getHistory() {
         return conversationHistory.stream()
             .map(MessageAdapter::fromSpringAi)

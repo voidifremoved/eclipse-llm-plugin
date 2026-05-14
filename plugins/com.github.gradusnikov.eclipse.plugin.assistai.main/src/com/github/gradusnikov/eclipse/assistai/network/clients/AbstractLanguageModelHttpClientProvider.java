@@ -7,6 +7,7 @@ import com.github.gradusnikov.eclipse.assistai.models.ModelApiDescriptor;
 
 import jakarta.inject.Provider;
 
+@Deprecated
 public abstract class AbstractLanguageModelHttpClientProvider
 {
     protected final Provider<OpenAIStreamJavaHttpClient> openaiClientProvider;

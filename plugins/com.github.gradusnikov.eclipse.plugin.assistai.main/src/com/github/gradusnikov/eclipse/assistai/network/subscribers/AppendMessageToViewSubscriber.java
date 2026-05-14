@@ -18,6 +18,7 @@ import com.github.gradusnikov.eclipse.assistai.view.ChatViewPresenter;
 
 @Creatable
 @Singleton
+@Deprecated
 public class AppendMessageToViewSubscriber implements Flow.Subscriber<Incoming>
 {
     @Inject

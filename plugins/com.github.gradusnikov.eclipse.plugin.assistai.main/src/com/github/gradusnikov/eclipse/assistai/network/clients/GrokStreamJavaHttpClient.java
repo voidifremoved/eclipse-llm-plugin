@@ -45,6 +45,7 @@ import io.modelcontextprotocol.spec.McpSchema.Tool;
 import jakarta.inject.Inject;
 
 @Creatable
+@Deprecated
 public class GrokStreamJavaHttpClient extends AbstractLanguageModelClient
 {
     

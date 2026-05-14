@@ -26,6 +26,7 @@ import com.github.gradusnikov.eclipse.assistai.jobs.ExecuteFunctionCallJob;
  * (e.g., ChatView vs code completion).
  */
 @Creatable
+@Deprecated
 public class FunctionCallSubscriber implements Flow.Subscriber<Incoming>
 {
     @Inject
