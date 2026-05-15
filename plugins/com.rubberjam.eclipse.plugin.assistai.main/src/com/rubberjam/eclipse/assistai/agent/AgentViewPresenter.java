@@ -1,0 +1,381 @@
+package com.rubberjam.eclipse.assistai.agent;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+
+import org.eclipse.e4.core.di.annotations.Creatable;
+import org.eclipse.e4.ui.di.UISynchronize;
+import org.eclipse.jface.preference.IPreferenceStore;
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.graphics.ImageData;
+import org.eclipse.swt.graphics.ImageLoader;
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.FileDialog;
+import org.eclipse.core.runtime.ILog;
+import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.resources.IProject;
+import org.eclipse.ui.PlatformUI;
+import org.eclipse.ui.IWorkbench;
+import org.eclipse.ui.IWorkbenchWindow;
+import org.eclipse.ui.IWorkbenchPage;
+
+import com.rubberjam.eclipse.assistai.Activator;
+import com.rubberjam.eclipse.assistai.chat.Attachment;
+import com.rubberjam.eclipse.assistai.chat.Attachment.FileContentAttachment;
+import static com.rubberjam.eclipse.assistai.tools.ImageUtilities.createPreview;
+import com.rubberjam.eclipse.assistai.chat.ChatMessage;
+import com.rubberjam.eclipse.assistai.prompt.PromptRepository;
+import com.rubberjam.eclipse.assistai.resources.IResourceCacheListener;
+import com.rubberjam.eclipse.assistai.resources.ResourceCacheEvent;
+import com.rubberjam.eclipse.assistai.view.ChatView;
+import com.rubberjam.eclipse.assistai.view.PartAccessor;
+import com.rubberjam.eclipse.assistai.models.ModelApiDescriptorRepository;
+import com.rubberjam.eclipse.assistai.view.ApplyPatchWizardHelper;
+import com.rubberjam.eclipse.assistai.mcp.services.CodeEditingService;
+import com.rubberjam.eclipse.assistai.tools.ResourceUtilities;
+import java.util.Optional;
+
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+import reactor.core.scheduler.Schedulers;
+
+@Creatable
+@Singleton
+@SuppressWarnings("restriction")
+public class AgentViewPresenter implements IResourceCacheListener
+{
+    @Inject private AgentSessionManager sessionManager;
+    @Inject private PartAccessor partAccessor;
+    @Inject private PromptRepository promptRepository;
+    @Inject private ModelApiDescriptorRepository modelRepository;
+    @Inject private ILog logger;
+    @Inject private CodeEditingService codeEditingService;
+    @Inject private ApplyPatchWizardHelper applyPatchWizardHelper;
+    @Inject private UISynchronize uiSync;
+
+    // We use Object to avoid OSGi visibility errors for reactor.core.Disposable
+    private Object currentStream;
+
+    private final IPreferenceStore preferences = Activator.getDefault().getPreferenceStore();
+    private static final String LAST_SELECTED_DIR_KEY = "lastSelectedDirectory";
+    private final List<Attachment> attachments = new ArrayList<>();
+
+    public void onSendUserMessage(String text)
+    {
+        onSendUserMessage(text, null);
+    }
+
+    public void onSendUserMessage(String text, List<Attachment> attachments)
+    {
+        AgentSession session = sessionManager.getOrCreateSession();
+
+        // Handle slash commands mapping manually, similar to ChatViewPresenter
+        if (text.startsWith("/")) {
+            String[] parts = text.split(" ", 2);
+            String command = parts[0].substring(1);
+            String rest = parts.length > 1 ? parts[1] : "";
+            try {
+                String template = promptRepository.getPrompt(command);
+                text = template.replace("${userMessage}", rest);
+            } catch (Exception e) {
+                // Ignore missing prompt
+            }
+        }
+
+        String userText = text;
+        String userMessageId = UUID.randomUUID().toString();
+
+        applyToView(view -> {
+            view.clearUserInput();
+            view.appendMessage(userMessageId, "user");
+            view.setMessageHtml(userMessageId, userText);
+            view.setInputEnabled(false);
+        });
+
+        String assistantMessageId = UUID.randomUUID().toString();
+        applyToView(view -> view.appendMessage(assistantMessageId, "assistant"));
+
+        StringBuilder accumulatedResponse = new StringBuilder();
+
+        currentStream = session.sendMessage(userText, attachments)
+            .subscribeOn(Schedulers.boundedElastic())
+            .subscribe(
+                chatResponse -> {
+                    String content = chatResponse.getResult().getOutput().getText();
+                    if (content != null) {
+                        accumulatedResponse.append(content);
+                        String currentHtml = accumulatedResponse.toString();
+                        applyToView(view -> view.setMessageHtml(assistantMessageId, currentHtml));
+                    }
+                },
+                error -> {
+                    applyToView(view -> {
+                        view.setMessageHtml(assistantMessageId, "Error: " + error.getMessage());
+                        view.setInputEnabled(true);
+                    });
+                },
+                () -> {
+                    // Stream finished, update conversation history in session
+                    session.appendAssistantResponse(accumulatedResponse.toString());
+                    applyToView(view -> view.setInputEnabled(true));
+                }
+            );
+    }
+
+    public void onStop()
+    {
+        if (currentStream != null)
+        {
+            try {
+                java.lang.reflect.Method isDisposedMethod = currentStream.getClass().getMethod("isDisposed");
+                boolean isDisposed = (Boolean) isDisposedMethod.invoke(currentStream);
+                if (!isDisposed) {
+                    java.lang.reflect.Method disposeMethod = currentStream.getClass().getMethod("dispose");
+                    disposeMethod.invoke(currentStream);
+                }
+            } catch (Exception e) {
+                // Ignore
+            }
+        }
+        applyToView(view -> view.setInputEnabled(true));
+    }
+
+    public void onChatModelSelected(String modelId)
+    {
+        sessionManager.switchModel(modelId);
+        modelRepository.setChatModelInUse(modelId);
+    }
+
+    public void onClear()
+    {
+        sessionManager.destroySession();
+        sessionManager.newSession();
+        applyToView(ChatView::clearChatView);
+    }
+
+    @Override
+    public void cacheChanged(ResourceCacheEvent event) {
+        // Ignored for now
+    }
+
+    private void applyToView(java.util.function.Consumer<ChatView> action)
+    {
+        partAccessor.findMessageView().ifPresent(view -> {
+            Display.getDefault().asyncExec(() -> action.accept(view));
+        });
+    }
+
+    public void onSendPredefinedPrompt(com.rubberjam.eclipse.assistai.prompt.Prompts type, ChatMessage message) {
+        onSendUserMessage(message.getContent(), message.getAttachments());
+    }
+
+    public void onViewVisible() {
+        // Ignored
+    }
+
+    public void onRemoveAttachment(int index) {
+        if (index >= 0 && index < attachments.size()) {
+            attachments.remove(index);
+            applyToView(view -> {
+                view.setAttachments(attachments);
+            });
+        }
+    }
+
+    public void onAddAttachment() {
+        Display display = PlatformUI.getWorkbench().getDisplay();
+        if (Objects.isNull(display)) {
+            logger.error("No active display");
+            return;
+        }
+
+        uiSync.asyncExec(() -> {
+            FileDialog fileDialog = new FileDialog(display.getActiveShell(), SWT.OPEN);
+            fileDialog.setText("Select an Image");
+
+            // Retrieve the last selected directory from the preferences
+            String lastSelectedDirectory = preferences.getString(LAST_SELECTED_DIR_KEY);
+            fileDialog.setFilterPath(lastSelectedDirectory);
+
+            fileDialog.setFilterExtensions(new String[] { "*.png", "*.jpeg", "*.jpg" });
+            fileDialog.setFilterNames(new String[] { "PNG files (*.png)", "JPEG files (*.jpeg, *.jpg)" });
+
+            String selectedFilePath = fileDialog.open();
+
+            if (selectedFilePath != null) {
+                // Save the last selected directory back to the preferences
+                String newLastSelectedDirectory = new File(selectedFilePath).getParent();
+                preferences.putValue(LAST_SELECTED_DIR_KEY, newLastSelectedDirectory);
+
+                ImageData[] imageDataArray = new ImageLoader().load(selectedFilePath);
+                if (imageDataArray.length > 0) {
+                    attachments.add(new Attachment.ImageAttachment(imageDataArray[0], createPreview(imageDataArray[0])));
+                    applyToView(messageView -> {
+                        messageView.setAttachments(attachments);
+                    });
+                }
+            }
+        });
+    }
+
+    public void onReplayLastMessage() {
+        logger.info("Replaying last message with current model");
+        AgentSession session = sessionManager.getOrCreateSession();
+        List<ChatMessage> history = session.getHistory();
+        if (history.isEmpty()) {
+            return;
+        }
+
+        if ("assistant".equals(history.get(history.size() - 1).getRole())) {
+            ChatMessage lastMessage = history.get(history.size() - 1);
+            session.removeLastMessage();
+            applyToView(view -> {
+                view.removeMessage(lastMessage.getId());
+            });
+        }
+
+        // We need to re-send the last user message, but without adding it to history again
+        // Actually, the simplest way is to remove the last user message as well and re-send it through onSendUserMessage
+        List<ChatMessage> updatedHistory = session.getHistory();
+        if (!updatedHistory.isEmpty() && "user".equals(updatedHistory.get(updatedHistory.size() - 1).getRole())) {
+            ChatMessage lastUserMessage = updatedHistory.get(updatedHistory.size() - 1);
+            session.removeLastMessage();
+            applyToView(view -> {
+                view.removeMessage(lastUserMessage.getId());
+            });
+            onSendUserMessage(lastUserMessage.getContent(), lastUserMessage.getAttachments());
+        }
+    }
+
+    public void onAttachmentAdded(ImageData imageData) {
+        attachments.add(new Attachment.ImageAttachment(imageData, createPreview(imageData)));
+        applyToView(messageView -> {
+            messageView.setAttachments(attachments);
+        });
+    }
+
+    public void onAttachmentAdded(FileContentAttachment attachment) {
+        attachments.add(attachment);
+        applyToView(messageView -> {
+            messageView.setAttachments(attachments);
+        });
+    }
+
+    public void onCopyCode(String codeBlock) {
+        // We use the clipboard to copy code block
+        Display.getDefault().asyncExec(() -> {
+            org.eclipse.swt.dnd.Clipboard clipboard = new org.eclipse.swt.dnd.Clipboard(Display.getDefault());
+            org.eclipse.swt.dnd.TextTransfer textTransfer = org.eclipse.swt.dnd.TextTransfer.getInstance();
+            clipboard.setContents(new Object[] { codeBlock }, new org.eclipse.swt.dnd.Transfer[] { textTransfer });
+            clipboard.dispose();
+        });
+    }
+
+    public void onApplyPatch(String codeBlock) {
+        Display.getDefault().asyncExec(() -> {
+            Optional.ofNullable(PlatformUI.getWorkbench())
+                    .map(workbench -> workbench.getActiveWorkbenchWindow())
+                    .map(window -> window.getActivePage())
+                    .map(page -> page.getActiveEditor())
+                    .flatMap(editor -> Optional.ofNullable(editor.getAdapter(org.eclipse.ui.texteditor.ITextEditor.class)))
+                    .ifPresent(textEditor -> {
+                        if (textEditor.getEditorInput() instanceof org.eclipse.ui.part.FileEditorInput) {
+                            org.eclipse.ui.part.FileEditorInput fileInput = (org.eclipse.ui.part.FileEditorInput) textEditor.getEditorInput();
+                            String projectName = fileInput.getFile().getProject().getName();
+                            applyPatchWizardHelper.showApplyPatchWizardDialog(codeBlock, projectName);
+                        }
+                    });
+        });
+    }
+
+    public void onInsertCode(String codeBlock) {
+        Display.getDefault().asyncExec(() -> {
+            Optional.ofNullable(PlatformUI.getWorkbench())
+                    .map(workbench -> workbench.getActiveWorkbenchWindow())
+                    .map(window -> window.getActivePage())
+                    .map(page -> page.getActiveEditor())
+                    .flatMap(editor -> Optional.ofNullable(editor.getAdapter(org.eclipse.ui.texteditor.ITextEditor.class)))
+                    .ifPresent(textEditor -> {
+                        var selectionProvider = textEditor.getSelectionProvider();
+                        var document = textEditor.getDocumentProvider().getDocument(textEditor.getEditorInput());
+                        if (selectionProvider != null && document != null) {
+                            var selection = (org.eclipse.jface.text.ITextSelection) selectionProvider.getSelection();
+                            try {
+                                if (selection.getLength() > 0) {
+                                    document.replace(selection.getOffset(), selection.getLength(), codeBlock);
+                                } else {
+                                    document.replace(selection.getOffset(), 0, codeBlock);
+                                }
+                            } catch (org.eclipse.jface.text.BadLocationException e) {
+                                logger.error("Error inserting code at location", e);
+                            }
+                        }
+                    });
+        });
+    }
+
+    public void onDiffCode(String codeBlock) {
+        Display.getDefault().asyncExec(() -> {
+            Optional.ofNullable(PlatformUI.getWorkbench())
+                    .map(workbench -> workbench.getActiveWorkbenchWindow())
+                    .map(window -> window.getActivePage())
+                    .map(page -> page.getActiveEditor())
+                    .flatMap(editor -> Optional.ofNullable(editor.getAdapter(org.eclipse.ui.texteditor.ITextEditor.class)))
+                    .ifPresent(textEditor -> {
+                        if (textEditor.getEditorInput() instanceof org.eclipse.ui.part.FileEditorInput) {
+                            org.eclipse.ui.part.FileEditorInput fileInput = (org.eclipse.ui.part.FileEditorInput) textEditor.getEditorInput();
+                            String projectName = fileInput.getFile().getProject().getName();
+                            String filePath = fileInput.getFile().getProjectRelativePath().toString();
+                            String diff = codeEditingService.generateCodeDiff(projectName, filePath, codeBlock, 3);
+                            if (diff != null && !diff.isBlank()) {
+                                applyPatchWizardHelper.showApplyPatchWizardDialog(diff, projectName);
+                            }
+                        }
+                    });
+        });
+    }
+
+    public void onNewFile(String codeBlock, String lang) {
+        Display.getDefault().asyncExec(() -> {
+            IProject project = Optional.ofNullable(PlatformUI.getWorkbench())
+                    .map(IWorkbench::getActiveWorkbenchWindow)
+                    .map(IWorkbenchWindow::getActivePage)
+                    .map(IWorkbenchPage::getActiveEditor)
+                    .map(editor -> editor.getEditorInput())
+                    .filter(input -> input instanceof org.eclipse.ui.part.FileEditorInput)
+                    .map(input -> ((org.eclipse.ui.part.FileEditorInput) input).getFile().getProject())
+                    .orElse(null);
+            if (project != null) {
+                String suggestedFileName = ResourceUtilities.getSuggestedFileName(lang, codeBlock);
+                IPath suggestedPath = ResourceUtilities.getSuggestedPath(project, lang, codeBlock);
+                org.eclipse.ui.dialogs.WizardNewFileCreationPage newFilePage = new org.eclipse.ui.dialogs.WizardNewFileCreationPage("NewFilePage", new org.eclipse.jface.viewers.StructuredSelection(project));
+                newFilePage.setTitle("New File");
+                newFilePage.setDescription(String.format("Create a new %s file in the project", ResourceUtilities.getFileExtensionForLang(lang)));
+                if (suggestedPath != null) {
+                    newFilePage.setContainerFullPath(suggestedPath);
+                }
+                newFilePage.setFileName(suggestedFileName);
+                org.eclipse.jface.wizard.Wizard wizard = new org.eclipse.jface.wizard.Wizard() {
+                    @Override
+                    public boolean performFinish() {
+                        return true;
+                    }
+                };
+                wizard.addPage(newFilePage);
+                org.eclipse.jface.wizard.WizardDialog dialog = new org.eclipse.jface.wizard.WizardDialog(Display.getDefault().getActiveShell(), wizard);
+                dialog.open();
+            }
+        });
+    }
+
+    public void onRemoveMessage(String messageId) {
+        AgentSession session = sessionManager.getOrCreateSession();
+        session.removeMessageById(messageId);
+        applyToView(view -> {
+            view.removeMessage(messageId);
+        });
+    }
+}

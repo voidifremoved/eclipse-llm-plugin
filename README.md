@@ -22,7 +22,7 @@ AssistAI solves this by routing all operations through Eclipse APIs:
 
 ### 1. Enable the HTTP MCP Server
 
-1. Open *Window > Preferences > Assist AI > HTTP MCP Server*
+1. Open *Window > Preferences > Assist Agent > HTTP MCP Server*
 2. Check **Enable HTTP MCP Server**
 3. Set **Hostname** and **Port** (defaults: `localhost:8124`)
 4. Click **Generate** to create an authentication token
@@ -262,7 +262,7 @@ External agents don't know what you're looking at in Eclipse -- unless they ask.
 
 Each MCP server can have individual tools enabled or disabled to reduce token overhead or exclude irrelevant tools.
 
-1. Navigate to *Window > Preferences > Assist AI > MCP Servers*
+1. Navigate to *Window > Preferences > Assist Agent > MCP Servers*
 2. Select a server (works for both built-in and user-defined)
 3. In the **Tools** section, uncheck tools you want to exclude
 
@@ -272,7 +272,7 @@ Changes take effect immediately -- both the internal MCP client and the HTTP ser
 
 AssistAI is also an MCP *client* -- you can connect external MCP servers (stdio-based) and use their tools through any of the supported LLMs.
 
-1. Open *Window > Preferences > Assist AI > MCP Servers* and click **Add**
+1. Open *Window > Preferences > Assist Agent > MCP Servers* and click **Add**
 2. Configure the server:
    ```
    Name: server-filesystem
@@ -354,7 +354,7 @@ Rules are evaluated in order; the **last matching rule wins**. Negation patterns
 
 ## Built-in Chat View
 
-AssistAI includes a built-in LLM chat panel for direct interaction without external agents. Open it via *Window > Show View > Other > Code Assist AI > AssistAI Chat*.
+AssistAI includes a built-in LLM chat panel for direct interaction without external agents. Open it via *Window > Show View > Other > Code Assist Agent > AssistAI Chat*.
 
 Features:
 - Refactor, document, or generate tests for selected code via context menu
@@ -381,7 +381,7 @@ Features:
 | Local/Self-hosted | OpenAI API | Ollama, LM Studio, etc. | Varies | Varies |
 | Other 3rd party | OpenAI API | Together.ai, Anyscale, etc. | Varies | Varies |
 
-Configure models in *Window > Preferences > Assist AI > Models*.
+Configure models in *Window > Preferences > Assist Agent > Models*.
 
 
 ## Screenshots
@@ -447,11 +447,11 @@ Drag the button below into your running Eclipse workspace:
 
 1. In Eclipse, open *Help > Install New Software*
 2. Click *Add*, enter `AssistAI` as Name and `https://gradusnikov.github.io/eclipse-chatgpt-plugin/` as Location
-3. Select "Assist AI" from the plugin list and proceed through the wizard
+3. Select "Assist Agent" from the plugin list and proceed through the wizard
 4. Accept certificate warnings (self-signed plugin)
 
 ### Initial Setup
 
-1. Open *Window > Preferences > Assist AI*
-2. Configure your models in *Preferences > Assist AI > Models*
+1. Open *Window > Preferences > Assist Agent*
+2. Configure your models in *Preferences > Assist Agent > Models*
 3. To use with external agents, enable the HTTP MCP Server (see above)
