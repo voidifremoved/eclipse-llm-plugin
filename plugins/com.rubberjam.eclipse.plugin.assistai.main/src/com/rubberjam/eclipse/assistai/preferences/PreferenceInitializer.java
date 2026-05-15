@@ -11,7 +11,6 @@ import com.rubberjam.eclipse.assistai.Activator;
 import com.rubberjam.eclipse.assistai.mcp.McpServerRepository;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptorRepository;
-import com.rubberjam.eclipse.assistai.preferences.mcp.McpServerDescriptorUtilities;
 import com.rubberjam.eclipse.assistai.prompt.PromptLoader;
 import com.rubberjam.eclipse.assistai.prompt.Prompts;
 
@@ -64,10 +63,8 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer
                 mistral, gpt4, claude, groq, deepseek, gemini, grok );
         modelApiDescriptorRepository.initializeDefaultDescriptorInUse( mistral );
         
-        var descriptors = mcpServerRepository.listBuiltInServers();
-        
-        String mcpServersJson = McpServerDescriptorUtilities.toJson( descriptors );
-        store.setDefault(PreferenceConstants.ASSISTAI_DEFINED_MCP_SERVERS, mcpServersJson);
+        // Built-in MCP servers are merged at load time; preferences only store user servers and overrides.
+        store.setDefault( PreferenceConstants.ASSISTAI_DEFINED_MCP_SERVERS, "[]" );
 
         // Initialize HTTP MCP Server defaults
         store.setDefault(PreferenceConstants.ASSISTAI_MCP_HTTP_HOSTNAME, "localhost");

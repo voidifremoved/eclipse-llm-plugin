@@ -43,7 +43,7 @@ import jakarta.inject.Singleton;
 
 @Creatable
 @Singleton
-public class InMemoryMcpClientRetistry
+public class InMemoryMcpClientRegistry
 {
     private Map<String, McpSyncClient> clients = new HashMap<>();
 

@@ -9,11 +9,13 @@ import java.util.stream.Stream;
 
 import org.eclipse.core.runtime.ILog;
 import org.eclipse.e4.core.di.annotations.Creatable;
+import org.eclipse.jface.preference.IPersistentPreferenceStore;
 import org.eclipse.jface.preference.IPreferenceStore;
 
 import com.rubberjam.eclipse.assistai.Activator;
 import com.rubberjam.eclipse.assistai.preferences.PreferenceConstants;
 import com.rubberjam.eclipse.assistai.preferences.mcp.McpServerDescriptorUtilities;
+import com.rubberjam.eclipse.assistai.preferences.mcp.McpServerPreferencesLog;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -51,7 +53,13 @@ public class McpServerRepository
     public List<McpServerDescriptor> listRawStoredServers()
     {
         String serversJson = getPreferenceStore().getString( PreferenceConstants.ASSISTAI_DEFINED_MCP_SERVERS );
-        return new ArrayList<>( McpServerDescriptorUtilities.fromJson( serversJson ) );
+        boolean isDefault = getPreferenceStore().isDefault( PreferenceConstants.ASSISTAI_DEFINED_MCP_SERVERS );
+        McpServerPreferencesLog.info( "listRawStoredServers: isDefault=" + isDefault
+                + " jsonLength=" + ( serversJson != null ? serversJson.length() : 0 )
+                + " repository@" + System.identityHashCode( this ) );
+        List<McpServerDescriptor> filtered = filterPersistedEntries( McpServerDescriptorUtilities.fromJson( serversJson ) );
+        McpServerPreferencesLog.logDescriptors( "listRawStoredServers: filtered", filtered );
+        return filtered;
     }
 
     /**
@@ -59,7 +67,9 @@ public class McpServerRepository
      */
     public List<McpServerDescriptor> listStoredServers()
     {
-        return mergeWithBuiltins( listRawStoredServers() );
+        List<McpServerDescriptor> merged = mergeWithBuiltins( listRawStoredServers() );
+        McpServerPreferencesLog.logDescriptors( "listStoredServers: merged", merged );
+        return merged;
     }
 
     /**
@@ -68,16 +78,19 @@ public class McpServerRepository
     public void upsertStoredServer( McpServerDescriptor descriptor )
     {
         Objects.requireNonNull( descriptor );
+        McpServerPreferencesLog.info( "upsertStoredServer: " + McpServerPreferencesLog.describe( descriptor ) );
         List<McpServerDescriptor> raw = listRawStoredServers();
         for ( int i = 0; i < raw.size(); i++ )
         {
             if ( descriptor.uid().equals( raw.get( i ).uid() ) )
             {
+                McpServerPreferencesLog.info( "upsertStoredServer: replacing existing index " + i );
                 raw.set( i, descriptor );
                 save( raw );
                 return;
             }
         }
+        McpServerPreferencesLog.info( "upsertStoredServer: adding new entry at index " + raw.size() );
         raw.add( descriptor );
         save( raw );
     }
@@ -116,9 +129,21 @@ public class McpServerRepository
 
         for ( McpServerDescriptor server : stored )
         {
-            if ( !server.builtIn() && findBuiltinByUidOrName( builtins, server ) == null )
+            if ( !server.builtIn() )
             {
-                merged.add( server );
+                McpServerDescriptor conflictingBuiltin = findBuiltinByUidOrName( builtins, server );
+                if ( conflictingBuiltin == null )
+                {
+                    merged.add( server );
+                }
+                else
+                {
+                    McpServerPreferencesLog.warn( "mergeWithBuiltins: skipping user server '"
+                            + server.name()
+                            + "' because it conflicts with built-in '"
+                            + conflictingBuiltin.name()
+                            + "' (use a different name)" );
+                }
             }
         }
 
@@ -193,9 +218,64 @@ public class McpServerRepository
      */
     public void save( List<McpServerDescriptor> servers )
     {
-        String json = McpServerDescriptorUtilities.toJson( servers );
-        getPreferenceStore().setValue( PreferenceConstants.ASSISTAI_DEFINED_MCP_SERVERS, json );
-        logger.info( "MCP Servers Updated" );
+        List<McpServerDescriptor> toPersist = filterPersistedEntries( servers );
+        McpServerPreferencesLog.logDescriptors( "save: input", servers );
+        McpServerPreferencesLog.logDescriptors( "save: toPersist", toPersist );
+        String json = McpServerDescriptorUtilities.toJson( toPersist );
+        McpServerPreferencesLog.info( "save: jsonLength=" + json.length() );
+        IPreferenceStore store = getPreferenceStore();
+        store.setValue( PreferenceConstants.ASSISTAI_DEFINED_MCP_SERVERS, json );
+        if ( store instanceof IPersistentPreferenceStore persistentStore )
+        {
+            try
+            {
+                persistentStore.save();
+            }
+            catch ( java.io.IOException e )
+            {
+                logger.error( "Failed to persist MCP server preferences", e );
+            }
+        }
+        logger.info( "MCP Servers Updated (" + toPersist.size() + " stored entries)" );
+    }
+
+    /**
+     * Preferences should only persist user-defined servers and built-in customizations
+     * (enabled / excluded tools), not full built-in snapshots from defaults.
+     */
+    private List<McpServerDescriptor> filterPersistedEntries( List<McpServerDescriptor> servers )
+    {
+        List<McpServerDescriptor> builtins = mcpBuiltins.listBuiltInImplementations();
+        List<McpServerDescriptor> filtered = new ArrayList<>();
+        for ( McpServerDescriptor server : servers )
+        {
+            if ( !server.builtIn() )
+            {
+                filtered.add( server );
+                McpServerPreferencesLog.info( "filterPersistedEntries: keep user server "
+                        + McpServerPreferencesLog.describe( server ) );
+                continue;
+            }
+            McpServerDescriptor canonical = findBuiltinByUidOrName( builtins, server );
+            if ( canonical != null && isBuiltinPreferenceOverride( canonical, server ) )
+            {
+                filtered.add( server );
+                McpServerPreferencesLog.info( "filterPersistedEntries: keep built-in override "
+                        + server.name() );
+            }
+            else
+            {
+                McpServerPreferencesLog.info( "filterPersistedEntries: drop built-in snapshot "
+                        + server.name() );
+            }
+        }
+        return filtered;
+    }
+
+    private static boolean isBuiltinPreferenceOverride( McpServerDescriptor canonical, McpServerDescriptor stored )
+    {
+        return canonical.enabled() != stored.enabled()
+                || !canonical.excludedTools().equals( stored.excludedTools() );
     }
 
     public void setToDefault()

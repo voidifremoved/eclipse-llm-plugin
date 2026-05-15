@@ -8,7 +8,7 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
-import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRetistry;
+import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRegistry;
 
 import io.modelcontextprotocol.client.McpSyncClient;
 import org.springframework.ai.tool.ToolCallback;

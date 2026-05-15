@@ -32,6 +32,7 @@ import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Group;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Shell;
@@ -96,6 +97,8 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     private List<EnvironmentVariable>    currentEnvVars = new ArrayList<>();
 
     private boolean                      addingNewServer;
+
+    private boolean                      suppressServerSelectionEvents;
 
     @Override
     public void init( IWorkbench workbench )
@@ -205,8 +208,14 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
         serverTable.addSelectionListener(new SelectionAdapter() {
             @Override
             public void widgetSelected(SelectionEvent e) {
+                if ( suppressServerSelectionEvents )
+                {
+                    return;
+                }
                 Objects.requireNonNull(presenter);
                 int selectedIndex = serverTable.getSelectionIndex();
+                McpServerPreferencesLog.info( "serverTable selection: index=" + selectedIndex
+                        + " addingNewServer=" + addingNewServer );
                 presenter.setSelectedServer(selectedIndex);
             }
         });
@@ -242,7 +251,7 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
         nameLabel.setLayoutData(nameLabelData);
         
         nameText = new Text(form, SWT.BORDER);
-        nameText.setToolTipText("Server name should contain only letters, numbers, underscores and hyphens ([a-zA-Z0-9_-]). Names must be unique.");
+        nameText.setToolTipText("Server name should contain only letters, numbers, underscores and hyphens ([a-zA-Z0-9_-]). Names must be unique and must not match a built-in server name (e.g. eclipse-ide, memory).");
         FormData nameTextData = new FormData();
         nameTextData.top = new FormAttachment(nameLabel, 0, SWT.CENTER);
         nameTextData.left = new FormAttachment(0, 150);
@@ -491,17 +500,24 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     @Override
     protected void performApply()
     {
+        McpServerPreferencesLog.info( "performApply: invoked" );
         if ( commitServerDetails() )
         {
             super.performApply();
+        }
+        else
+        {
+            McpServerPreferencesLog.warn( "performApply: commitServerDetails returned false" );
         }
     }
 
     @Override
     public boolean performOk()
     {
+        McpServerPreferencesLog.info( "performOk: invoked" );
         if ( !commitServerDetails() )
         {
+            McpServerPreferencesLog.warn( "performOk: commitServerDetails returned false" );
             return false;
         }
         return super.performOk();
@@ -515,6 +531,11 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     private boolean commitServerDetails()
     {
         String serverName = nameText.getText().trim();
+        int selectionIndex = serverTable.getSelectionIndex();
+        McpServerPreferencesLog.info( "commitServerDetails: name='" + serverName
+                + "' addingNewServer=" + addingNewServer
+                + " selectionIndex=" + selectionIndex );
+
         if ( serverName.isEmpty() )
         {
             if ( addingNewServer )
@@ -522,6 +543,7 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
                 showError( "Server name cannot be empty" );
                 return false;
             }
+            McpServerPreferencesLog.info( "commitServerDetails: skip save (empty name, not adding)" );
             return true;
         }
 
@@ -541,7 +563,7 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
 
         List<String> excludedTools = collectExcludedTools();
         McpServerDescriptor updatedServer = new McpServerDescriptor( "",
-                nameText.getText(),
+                serverName,
                 command,
                 currentEnvVars,
                 true,
@@ -549,14 +571,40 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
                 excludedTools,
                 url );
 
-        boolean isNewServer = addingNewServer;
-        int displayIndex = isNewServer ? -1 : serverTable.getSelectionIndex();
-        presenter.saveServer( isNewServer, displayIndex, updatedServer );
+        boolean isNewServer = addingNewServer || selectionIndex < 0;
+        if ( !isNewServer && selectionIndex >= 0 )
+        {
+            Object input = serverTableViewer.getInput();
+            if ( input instanceof List<?> rows && selectionIndex < rows.size()
+                    && rows.get( selectionIndex ) instanceof McpServerDescriptorWithStatus row )
+            {
+                McpServerDescriptor selected = row.descriptor();
+                if ( selected.builtIn() && !selected.name().equals( serverName ) )
+                {
+                    McpServerPreferencesLog.info( "commitServerDetails: treating as new server (form name '"
+                            + serverName + "' differs from selected built-in '" + selected.name() + "')" );
+                    isNewServer = true;
+                }
+            }
+        }
+        int displayIndex = isNewServer ? -1 : selectionIndex;
+        McpServerPreferencesLog.info( "commitServerDetails: isNewServer=" + isNewServer
+                + " displayIndex=" + displayIndex );
+        if ( !presenter.saveServer( isNewServer, displayIndex, updatedServer ) )
+        {
+            return false;
+        }
         return true;
+    }
+
+    public boolean isAddingNewServer()
+    {
+        return addingNewServer;
     }
 
     public void prepareAddServer()
     {
+        McpServerPreferencesLog.info( "prepareAddServer" );
         addingNewServer = true;
         Runnable clearSelection = () -> serverTable.deselectAll();
         if ( getShell() != null && getShell().getDisplay() != null )
@@ -598,20 +646,42 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
      */
     public void showServers(List<McpServerDescriptorWithStatus> servers) 
     {
-        uiSync.asyncExec(() -> {
-        	if ( serverTableViewer == null || serverTableViewer.getControl().isDisposed() ) 
+        McpServerPreferencesLog.logDescriptorsWithStatus( "showServers: requested", servers );
+        Runnable update = () -> {
+            if ( serverTableViewer == null || serverTableViewer.getControl().isDisposed() )
             {
+                McpServerPreferencesLog.warn( "showServers: table disposed, skipping UI update" );
                 return;
             }
-        	
-            serverTableViewer.setInput(servers);
-            serverTableViewer.refresh();
-            
-            // Set the checked state for each server based on its enabled status
-            for (McpServerDescriptorWithStatus server : servers) {
-                serverTableViewer.setChecked(server, server.descriptor().enabled());
+
+            suppressServerSelectionEvents = true;
+            try
+            {
+                serverTableViewer.setInput( servers );
+                serverTableViewer.refresh();
+
+                for ( McpServerDescriptorWithStatus server : servers )
+                {
+                    serverTableViewer.setChecked( server, server.descriptor().enabled() );
+                }
+                serverTable.deselectAll();
+                McpServerPreferencesLog.info( "showServers: table updated, rowCount="
+                        + ( servers != null ? servers.size() : 0 )
+                        + " selectionIndex=" + serverTable.getSelectionIndex() );
             }
-        });
+            finally
+            {
+                suppressServerSelectionEvents = false;
+            }
+        };
+        if ( Display.getCurrent() != null )
+        {
+            update.run();
+        }
+        else
+        {
+            uiSync.asyncExec( update );
+        }
     }
 
     /**
@@ -649,7 +719,6 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
                 return;
             }
         	
-            addingNewServer = false;
             nameText.setText( "" );
             commandText.setText( "" );
             urlText.setText( "" );

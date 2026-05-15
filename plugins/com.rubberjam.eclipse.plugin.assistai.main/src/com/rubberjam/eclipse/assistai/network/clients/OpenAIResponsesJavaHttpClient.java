@@ -29,7 +29,7 @@ import com.rubberjam.eclipse.assistai.chat.Attachment;
 import com.rubberjam.eclipse.assistai.chat.ChatMessage;
 import com.rubberjam.eclipse.assistai.chat.Conversation;
 import com.rubberjam.eclipse.assistai.chat.Incoming;
-import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRetistry;
+import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRegistry;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 import com.rubberjam.eclipse.assistai.prompt.PromptRepository;
 import com.rubberjam.eclipse.assistai.prompt.Prompts;
@@ -59,7 +59,7 @@ public class OpenAIResponsesJavaHttpClient extends AbstractLanguageModelClient
     @Inject
     public OpenAIResponsesJavaHttpClient( ILog logger, 
             LanguageModelClientConfiguration configuration, 
-            InMemoryMcpClientRetistry mcpClientRegistry,
+            InMemoryMcpClientRegistry mcpClientRegistry,
             ResourceCache resourceCache, 
             PromptRepository promptRepository )
     {

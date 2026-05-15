@@ -7,7 +7,7 @@ import java.util.Objects;
 import org.eclipse.e4.core.di.annotations.Creatable;
 
 import com.rubberjam.eclipse.assistai.chat.ConversationContext;
-import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRetistry;
+import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRegistry;
 
 import io.modelcontextprotocol.client.McpSyncClient;
 import jakarta.inject.Inject;
@@ -28,7 +28,7 @@ import org.springframework.ai.tool.metadata.ToolMetadata;
 public class McpToolBridge
 {
     @Inject
-    private Provider<InMemoryMcpClientRetistry> mcpClientRegistryProvider;
+    private Provider<InMemoryMcpClientRegistry> mcpClientRegistryProvider;
 
     /**
      * Spring AI tool callbacks for every enabled MCP client.

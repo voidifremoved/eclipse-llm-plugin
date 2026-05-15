@@ -19,7 +19,7 @@ import com.rubberjam.eclipse.assistai.chat.Attachment;
 import com.rubberjam.eclipse.assistai.chat.ChatMessage;
 import com.rubberjam.eclipse.assistai.chat.ConversationContext;
 import com.rubberjam.eclipse.assistai.chat.FunctionCall;
-import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRetistry;
+import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRegistry;
 import com.rubberjam.eclipse.assistai.resources.CachedResource;
 import com.rubberjam.eclipse.assistai.resources.ResourceCache;
 import com.rubberjam.eclipse.assistai.resources.ResourceResultSerializer;
@@ -42,7 +42,7 @@ public class ExecuteFunctionCallJob extends Job
     private ILog                          logger;
 
     @Inject
-    private InMemoryMcpClientRetistry     mcpClientRetistry;
+    private InMemoryMcpClientRegistry     mcpClientRetistry;
 
     @Inject
     private ResourceCache                 resourceCache;

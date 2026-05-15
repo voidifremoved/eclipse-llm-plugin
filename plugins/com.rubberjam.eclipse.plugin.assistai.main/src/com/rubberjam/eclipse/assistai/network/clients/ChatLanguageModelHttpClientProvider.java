@@ -7,7 +7,7 @@ import java.util.Optional;
 import org.eclipse.e4.core.di.annotations.Creatable;
 
 import com.rubberjam.eclipse.assistai.chat.ConversationContext;
-import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRetistry;
+import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRegistry;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptorRepository;
 import com.rubberjam.eclipse.assistai.network.subscribers.AppendMessageToViewSubscriber;
 import com.rubberjam.eclipse.assistai.network.subscribers.FunctionCallSubscriber;

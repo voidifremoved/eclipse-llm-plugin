@@ -21,7 +21,7 @@ import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor.EnvironmentVariabl
 import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor.McpServerDescriptorWithStatus;
 import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor.Status;
 import com.rubberjam.eclipse.assistai.mcp.http.HttpMcpServerRegistry;
-import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRetistry;
+import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRegistry;
 import com.rubberjam.eclipse.assistai.mcp.McpServerRepository;
 import com.rubberjam.eclipse.assistai.mcp.remote.RemoteMcpClientFactory;
 
@@ -41,7 +41,7 @@ public class McpServerPreferencePresenter
     private static final int MCP_SERVER_PING_TIMEOUT_SECONDS = 1;
     private static final int MCP_TOOL_DISCOVERY_TIMEOUT_SECONDS = 20;
 
-    private final InMemoryMcpClientRetistry clientRetistry;
+    private final InMemoryMcpClientRegistry clientRetistry;
     private final HttpMcpServerRegistry httpMcpServerRegistry;
     private final McpServerRepository mcpServerRepository;
     private final ILog logger;
@@ -51,7 +51,7 @@ public class McpServerPreferencePresenter
     private String lastDiscoveredUrl = "";
 
     @Inject
-    public McpServerPreferencePresenter( InMemoryMcpClientRetistry mcpClientRetistry,
+    public McpServerPreferencePresenter( InMemoryMcpClientRegistry mcpClientRetistry,
                                          HttpMcpServerRegistry httpMcpServerRegistry,
                                          McpServerRepository mcpServerRepository,
                                          ILog logger
@@ -219,8 +219,17 @@ public class McpServerPreferencePresenter
      * @param updatedServerStub
      *            form data
      */
-    public void saveServer( boolean isNewServer, int displayIndex, McpServerDescriptor updatedServerStub )
+    /**
+     * @return {@code false} if validation failed and nothing was saved
+     */
+    public boolean saveServer( boolean isNewServer, int displayIndex, McpServerDescriptor updatedServerStub )
     {
+        McpServerPreferencesLog.info( "saveServer: isNewServer=" + isNewServer
+                + " displayIndex=" + displayIndex
+                + " addingNewServer=" + view.isAddingNewServer()
+                + " stub=" + McpServerPreferencesLog.describe( updatedServerStub )
+                + " repository@" + System.identityHashCode( mcpServerRepository ) );
+
         List<McpServerDescriptor> displayServers = mcpServerRepository.listStoredServers();
 
         String uid;
@@ -228,19 +237,28 @@ public class McpServerPreferencePresenter
         if ( !isNewServer && displayIndex >= 0 && displayIndex < displayServers.size() )
         {
             McpServerDescriptor current = displayServers.get( displayIndex );
+            if ( current.builtIn() )
+            {
+                McpServerPreferencesLog.warn( "saveServer: blocked update of built-in row index "
+                        + displayIndex + " name=" + current.name() );
+                view.showError( "Built-in servers cannot be replaced. Click Add to create a new MCP server." );
+                return false;
+            }
             uid = current.uid();
             builtIn = current.builtIn();
         }
         else
         {
             uid = UUID.randomUUID().toString();
+            McpServerPreferencesLog.info( "saveServer: allocating new uid=" + uid );
         }
 
         final String uidToReplace = uid;
+        String trimmedName = updatedServerStub.name() != null ? updatedServerStub.name().trim() : "";
         boolean nameExists = false;
         for ( McpServerDescriptor server : displayServers )
         {
-            if ( !uidToReplace.equals( server.uid() ) && server.name().equals( updatedServerStub.name() ) )
+            if ( !uidToReplace.equals( server.uid() ) && server.name().equals( trimmedName ) )
             {
                 nameExists = true;
                 break;
@@ -249,12 +267,12 @@ public class McpServerPreferencePresenter
 
         if ( nameExists )
         {
+            McpServerPreferencesLog.warn( "saveServer: duplicate name '" + trimmedName + "'" );
             view.showError( "Server name must be unique" );
-            return;
+            return false;
         }
-
         McpServerDescriptor toStore = new McpServerDescriptor( uid,
-                updatedServerStub.name(),
+                trimmedName,
                 updatedServerStub.command(),
                 updatedServerStub.environmentVariables(),
                 updatedServerStub.enabled(),
@@ -263,11 +281,16 @@ public class McpServerPreferencePresenter
                 updatedServerStub.url() );
 
         mcpServerRepository.upsertStoredServer( toStore );
+        List<McpServerDescriptor> afterRaw = mcpServerRepository.listRawStoredServers();
+        McpServerPreferencesLog.logDescriptors( "saveServer: raw after upsert", afterRaw );
         restartServers();
-        view.showServers( getServersWithStatus() );
+        List<McpServerDescriptorWithStatus> refreshed = getServersWithStatus();
+        McpServerPreferencesLog.logDescriptorsWithStatus( "saveServer: UI refresh", refreshed );
+        view.showServers( refreshed );
         view.clearServerDetails();
         view.setDetailsEditable( false );
         view.setAddingNewServer( false );
+        return true;
     }
 
     /**
@@ -278,10 +301,10 @@ public class McpServerPreferencePresenter
      */
     public void setSelectedServer( int selectedIndex )
     {
-        view.setAddingNewServer( false );
         var servers = mcpServerRepository.listStoredServers();
         if ( selectedIndex >= 0 && selectedIndex < servers.size() )
         {
+            view.setAddingNewServer( false );
             var selected = servers.get( selectedIndex );
             lastDiscoveredUrl = selected.url() != null ? selected.url().trim() : "";
             view.showServerDetails( selected );
@@ -290,7 +313,7 @@ public class McpServerPreferencePresenter
             List<String> allTools = listToolsForDescriptor( selected );
             view.showToolList( allTools, selected.excludedTools() );
         }
-        else
+        else if ( !view.isAddingNewServer() )
         {
             lastDiscoveredUrl = "";
             view.clearServerDetails();
@@ -370,6 +393,8 @@ public class McpServerPreferencePresenter
     public void registerView( McpServerPreferencePage mcpServerPreferencePage )
     {
         view = mcpServerPreferencePage;
+        McpServerPreferencesLog.info( "registerView: presenter@" + System.identityHashCode( this )
+                + " repository@" + System.identityHashCode( mcpServerRepository ) );
         view.showServers( getServersWithStatus() );
         view.setDetailsEditable( false );
     }

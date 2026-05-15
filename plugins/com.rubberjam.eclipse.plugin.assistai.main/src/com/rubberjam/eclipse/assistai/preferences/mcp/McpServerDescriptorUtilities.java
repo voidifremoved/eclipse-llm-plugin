@@ -6,11 +6,13 @@ import java.util.List;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor;
+import com.rubberjam.eclipse.assistai.preferences.mcp.McpServerPreferencesLog;
 
 /**
  * Utilities for serializing and deserializing MCP Server descriptors
@@ -18,6 +20,10 @@ import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor;
 public class McpServerDescriptorUtilities {
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
+
+    static {
+        objectMapper.configure( DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false );
+    }
 
     /**
      * Convert a list of MCP Server descriptors to JSON
@@ -29,8 +35,7 @@ public class McpServerDescriptorUtilities {
         try {
             return objectMapper.writeValueAsString(descriptors);
         } catch (JsonProcessingException e) {
-            // In case of error, return empty JSON array
-            return "[]";
+            throw new IllegalStateException( "Failed to serialize MCP server preferences", e );
         }
     }
 
@@ -52,20 +57,48 @@ public class McpServerDescriptorUtilities {
      */
     public static List<McpServerDescriptor> fromJson(String json) {
         if (json == null || json.isEmpty()) {
+            McpServerPreferencesLog.info( "fromJson: empty preference value" );
             return new ArrayList<>();
         }
 
         try {
-            return objectMapper.readValue(json, new TypeReference<List<McpServerDescriptor>>() {});
-        } catch (Exception e) {
-            try {
-                return objectMapper.readValue(
-                        migrateLegacyJson( json ),
+            List<McpServerDescriptor> parsed = objectMapper.readValue( json, new TypeReference<List<McpServerDescriptor>>() {} );
+            McpServerPreferencesLog.logDescriptors( "fromJson: parsed", parsed );
+            return parsed;
+        }
+        catch ( Exception e )
+        {
+            McpServerPreferencesLog.warn( "fromJson: direct parse failed, trying migration. jsonLength="
+                    + json.length() + " error=" + e.getMessage() );
+            try
+            {
+                String migrated = migrateLegacyJson( json );
+                List<McpServerDescriptor> parsed = objectMapper.readValue(
+                        migrated,
                         new TypeReference<List<McpServerDescriptor>>() {} );
-            } catch (Exception migrationError) {
+                McpServerPreferencesLog.logDescriptors( "fromJson: parsed after migration", parsed );
+                return parsed;
+            }
+            catch ( Exception migrationError )
+            {
+                McpServerPreferencesLog.error( "fromJson: migration failed; returning empty list. jsonPreview="
+                        + abbreviateJson( json ), migrationError );
                 return new ArrayList<>();
             }
         }
+    }
+
+    private static String abbreviateJson( String json )
+    {
+        if ( json == null )
+        {
+            return "";
+        }
+        if ( json.length() <= 500 )
+        {
+            return json;
+        }
+        return json.substring( 0, 500 ) + "...";
     }
 
     /**

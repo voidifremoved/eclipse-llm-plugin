@@ -8,7 +8,7 @@ import org.eclipse.core.runtime.ILog;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rubberjam.eclipse.assistai.chat.ConversationContext;
-import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRetistry;
+import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRegistry;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 import com.rubberjam.eclipse.assistai.prompt.PromptRepository;
 import com.rubberjam.eclipse.assistai.resources.ResourceCache;
@@ -26,7 +26,7 @@ public abstract class AbstractLanguageModelClient implements LanguageModelClient
 
     protected final LanguageModelClientConfiguration configuration;
 
-    protected final InMemoryMcpClientRetistry mcpClientRegistry;
+    protected final InMemoryMcpClientRegistry mcpClientRegistry;
 
     protected final ResourceCache resourceCache;
 
@@ -50,7 +50,7 @@ public abstract class AbstractLanguageModelClient implements LanguageModelClient
     @Inject
     public AbstractLanguageModelClient( ILog logger,
                                         LanguageModelClientConfiguration configuration,
-                                        InMemoryMcpClientRetistry mcpClientRegistry,
+                                        InMemoryMcpClientRegistry mcpClientRegistry,
                                         ResourceCache resourceCache,
                                         PromptRepository promptRepository )
     {
