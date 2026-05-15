@@ -15,7 +15,7 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.ILog;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.e4.core.di.annotations.Creatable;
-import org.eclipse.e4.ui.di.UISynchronize;
+import com.rubberjam.eclipse.assistai.tools.UISynchronizeCallable;
 
 import com.rubberjam.eclipse.assistai.services.AiIgnoreService;
 import com.rubberjam.eclipse.assistai.tools.ResourceUtilities;
@@ -29,7 +29,7 @@ public class LocalHistoryService
     ILog logger;
 
     @Inject
-    UISynchronize sync;
+    UISynchronizeCallable sync;
 
     @Inject
     AiIgnoreService aiIgnoreService;

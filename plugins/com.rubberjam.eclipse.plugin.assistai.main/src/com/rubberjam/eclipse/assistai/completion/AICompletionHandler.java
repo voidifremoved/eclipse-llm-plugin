@@ -141,6 +141,10 @@ public class AICompletionHandler extends AbstractHandler {
                     if ( Objects.nonNull( parsed ) ) {
                         // Update on UI thread
                         uiSync.asyncExec(() -> {
+                            if ( !ghostManager.isWidgetAlive() )
+                            {
+                                return;
+                            }
                             if (!ghostManager.isShowing()) {
                                 // First content - show ghost text at original cursor position
                                 ghostManager.showGhostText(parsed, cursorOffset);
@@ -158,17 +162,26 @@ public class AICompletionHandler extends AbstractHandler {
             String completion = parseCompletion(fullResponse);
             if ( Objects.nonNull(completion) ) {
                 uiSync.asyncExec(() -> {
-                    ghostManager.updateGhostText(completion);
+                    if ( ghostManager.isWidgetAlive() )
+                    {
+                        ghostManager.updateGhostText(completion);
+                    }
                 });
             } else {
                 uiSync.asyncExec(() -> {
-                    ghostManager.dismissCompletion();
+                    if ( ghostManager.isWidgetAlive() )
+                    {
+                        ghostManager.dismissCompletion();
+                    }
                 });
             }
             currentRequest.set(null);
         }).exceptionally(error -> {
             uiSync.asyncExec(() -> {
-                ghostManager.dismissCompletion();
+                if ( ghostManager.isWidgetAlive() )
+                {
+                    ghostManager.dismissCompletion();
+                }
             });
             currentRequest.set(null);
             return null;
@@ -193,7 +206,11 @@ public class AICompletionHandler extends AbstractHandler {
                     String completion = parseCompletion(fullResponse);
                     if ( Objects.nonNull(completion) ) {
                         uiSync.asyncExec(() -> {
-                            insertText(textEditor, completion);
+                            if ( textEditor != null && textEditor.getSite() != null
+                                    && !textEditor.getSite().getShell().isDisposed() )
+                            {
+                                insertText(textEditor, completion);
+                            }
                         });
                     }
                 });

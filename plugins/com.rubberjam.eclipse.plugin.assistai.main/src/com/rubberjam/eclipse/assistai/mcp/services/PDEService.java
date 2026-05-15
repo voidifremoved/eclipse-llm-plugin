@@ -19,7 +19,7 @@ import org.eclipse.debug.core.ILaunchConfigurationType;
 import org.eclipse.debug.core.ILaunchConfigurationWorkingCopy;
 import org.eclipse.debug.core.ILaunchManager;
 import org.eclipse.e4.core.di.annotations.Creatable;
-import org.eclipse.e4.ui.di.UISynchronize;
+import com.rubberjam.eclipse.assistai.tools.UISynchronizeCallable;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaCore;
@@ -50,7 +50,7 @@ public class PDEService
     private ILog logger;
 
     @Inject
-    private UISynchronize sync;
+    private UISynchronizeCallable sync;
 
     // -------------------------------------------------------------------------
     // Target platform

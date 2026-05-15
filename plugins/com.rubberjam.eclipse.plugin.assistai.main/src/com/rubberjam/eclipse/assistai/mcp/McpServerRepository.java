@@ -45,11 +45,52 @@ public class McpServerRepository
      *
      * @return A list of MCP server descriptors.
      */
-    public List<McpServerDescriptor> listStoredServers()
+    /**
+     * Servers as persisted in preferences (no built-in merge).
+     */
+    public List<McpServerDescriptor> listRawStoredServers()
     {
         String serversJson = getPreferenceStore().getString( PreferenceConstants.ASSISTAI_DEFINED_MCP_SERVERS );
-        List<McpServerDescriptor> stored = McpServerDescriptorUtilities.fromJson( serversJson );
-        return mergeWithBuiltins( stored );
+        return new ArrayList<>( McpServerDescriptorUtilities.fromJson( serversJson ) );
+    }
+
+    /**
+     * Built-in servers plus stored preferences (for UI and runtime).
+     */
+    public List<McpServerDescriptor> listStoredServers()
+    {
+        return mergeWithBuiltins( listRawStoredServers() );
+    }
+
+    /**
+     * Insert or replace a server entry in preferences (matched by {@code uid}).
+     */
+    public void upsertStoredServer( McpServerDescriptor descriptor )
+    {
+        Objects.requireNonNull( descriptor );
+        List<McpServerDescriptor> raw = listRawStoredServers();
+        for ( int i = 0; i < raw.size(); i++ )
+        {
+            if ( descriptor.uid().equals( raw.get( i ).uid() ) )
+            {
+                raw.set( i, descriptor );
+                save( raw );
+                return;
+            }
+        }
+        raw.add( descriptor );
+        save( raw );
+    }
+
+    /**
+     * Remove a server from preferences by {@code uid}.
+     */
+    public void removeStoredServerByUid( String uid )
+    {
+        Objects.requireNonNull( uid );
+        List<McpServerDescriptor> raw = listRawStoredServers();
+        raw.removeIf( server -> uid.equals( server.uid() ) );
+        save( raw );
     }
 
     /**

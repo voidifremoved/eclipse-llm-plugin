@@ -113,6 +113,11 @@ public class ResourcesView
         presenter.unregisterView();
     }
     
+    public boolean isDisposed()
+    {
+        return treeViewer == null || treeViewer.getControl().isDisposed();
+    }
+
     @Focus
     public void setFocus()
     {

@@ -29,7 +29,7 @@ import org.eclipse.debug.core.model.IStreamMonitor;
 import org.eclipse.debug.core.model.IThread;
 import org.eclipse.debug.core.model.IVariable;
 import org.eclipse.e4.core.di.annotations.Creatable;
-import org.eclipse.e4.ui.di.UISynchronize;
+import com.rubberjam.eclipse.assistai.tools.UISynchronizeCallable;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaCore;
@@ -47,7 +47,7 @@ public class JavaLaunchService
     ILog logger;
 
     @Inject
-    UISynchronize sync;
+    UISynchronizeCallable sync;
 
     /**
      * Launches a Java application in run mode.

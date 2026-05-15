@@ -72,6 +72,7 @@ li {
 .tool-call-details pre {
   margin-top: 6px;
   max-height: 220px;
+  white-space: pre-wrap;
 }
 
 /* Ensure inline elements stay inline */

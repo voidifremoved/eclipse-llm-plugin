@@ -95,6 +95,8 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
 
     private List<EnvironmentVariable>    currentEnvVars = new ArrayList<>();
 
+    private boolean                      addingNewServer;
+
     @Override
     public void init( IWorkbench workbench )
     {
@@ -489,21 +491,44 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     @Override
     protected void performApply()
     {
-        int selectedIndex = serverTable.getSelectionIndex();
-
-        // Validate form
-        String serverName = nameText.getText().trim();
-        if (serverName.isEmpty())
+        if ( commitServerDetails() )
         {
-            showError("Server name cannot be empty");
-            return;
+            super.performApply();
         }
-        
-        // Validate server name format (letters, numbers, underscores, hyphens)
-        if (!serverName.matches("[a-zA-Z0-9_-]+"))
+    }
+
+    @Override
+    public boolean performOk()
+    {
+        if ( !commitServerDetails() )
         {
-            showError("Server name can only contain letters, numbers, underscores and hyphens");
-            return;
+            return false;
+        }
+        return super.performOk();
+    }
+
+    /**
+     * Validates the details form and persists the server when adding or editing.
+     *
+     * @return {@code false} if validation failed
+     */
+    private boolean commitServerDetails()
+    {
+        String serverName = nameText.getText().trim();
+        if ( serverName.isEmpty() )
+        {
+            if ( addingNewServer )
+            {
+                showError( "Server name cannot be empty" );
+                return false;
+            }
+            return true;
+        }
+
+        if ( !serverName.matches( "[a-zA-Z0-9_-]+" ) )
+        {
+            showError( "Server name can only contain letters, numbers, underscores and hyphens" );
+            return false;
         }
 
         String url = urlText.getText().trim();
@@ -511,12 +536,10 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
         if ( url.isEmpty() && command.isEmpty() )
         {
             showError( "Either URL (HTTP MCP) or Command (stdio MCP) must be set" );
-            return;
+            return false;
         }
 
         List<String> excludedTools = collectExcludedTools();
-
-        // Create updated server descriptor
         McpServerDescriptor updatedServer = new McpServerDescriptor( "",
                 nameText.getText(),
                 command,
@@ -524,10 +547,40 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
                 true,
                 false,
                 excludedTools,
-                url ); 
+                url );
 
-        presenter.saveServer( selectedIndex, updatedServer );
-        super.performApply();
+        boolean isNewServer = addingNewServer;
+        int displayIndex = isNewServer ? -1 : serverTable.getSelectionIndex();
+        presenter.saveServer( isNewServer, displayIndex, updatedServer );
+        return true;
+    }
+
+    public void prepareAddServer()
+    {
+        addingNewServer = true;
+        Runnable clearSelection = () -> serverTable.deselectAll();
+        if ( getShell() != null && getShell().getDisplay() != null )
+        {
+            getShell().getDisplay().syncExec( clearSelection );
+        }
+        else
+        {
+            clearSelection.run();
+        }
+        nameText.setText( "" );
+        commandText.setText( "" );
+        urlText.setText( "" );
+        currentEnvVars.clear();
+        envTableViewer.setInput( currentEnvVars );
+        envTableViewer.refresh();
+        toolTableViewer.setInput( Collections.emptyList() );
+        toolTableViewer.refresh();
+        setDetailsEditable( true );
+    }
+
+    public void setAddingNewServer( boolean addingNewServer )
+    {
+        this.addingNewServer = addingNewServer;
     }
 
     @Override
@@ -546,6 +599,11 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     public void showServers(List<McpServerDescriptorWithStatus> servers) 
     {
         uiSync.asyncExec(() -> {
+        	if ( serverTableViewer == null || serverTableViewer.getControl().isDisposed() ) 
+            {
+                return;
+            }
+        	
             serverTableViewer.setInput(servers);
             serverTableViewer.refresh();
             
@@ -565,6 +623,10 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     public void showServerDetails( McpServerDescriptor serverDescriptor )
     {
         uiSync.asyncExec( () -> {
+        	if (nameText == null || nameText.isDisposed())
+        	{
+        		return;
+        	}
             nameText.setText( serverDescriptor.name() );
             commandText.setText( serverDescriptor.command() );
             urlText.setText( serverDescriptor.url() != null ? serverDescriptor.url() : "" );
@@ -582,6 +644,12 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     public void clearServerDetails()
     {
         uiSync.asyncExec( () -> {
+        	if ( nameText == null || nameText.isDisposed() ) 
+            {
+                return;
+            }
+        	
+            addingNewServer = false;
             nameText.setText( "" );
             commandText.setText( "" );
             urlText.setText( "" );
@@ -600,6 +668,10 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     public void showToolList( List<String> allTools, List<String> excludedTools )
     {
         uiSync.asyncExec( () -> {
+            if ( toolTableViewer == null || toolTableViewer.getControl().isDisposed() )
+            {
+                return;
+            }
             toolTableViewer.setInput( allTools );
             for ( String tool : allTools )
             {
@@ -612,8 +684,15 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     public void setToolsDiscoveryInProgress( boolean inProgress )
     {
         uiSync.asyncExec( () -> {
+            if ( toolTable == null || toolTable.isDisposed() )
+            {
+                return;
+            }
             toolTable.setEnabled( !inProgress );
-            toolsLabel.setText( inProgress ? "Tools: (discovering…)" : "Tools:" );
+            if ( toolsLabel != null && !toolsLabel.isDisposed() )
+            {
+                toolsLabel.setText( inProgress ? "Tools: (discovering…)" : "Tools:" );
+            }
         } );
     }
 
@@ -641,6 +720,10 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
      */
     public void setRemoveEditable( boolean enabled )
     {
+        if ( removeButton == null || removeButton.isDisposed() )
+        {
+            return;
+        }
         removeButton.setEnabled( enabled );
     }
 
@@ -653,6 +736,12 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     public void setDetailsEditable( boolean editable )
     {
         uiSync.asyncExec( () -> {
+        	
+        	if ( nameLabel == null || nameLabel.isDisposed() ) 
+            {
+                return;
+            }
+        	
             // Enable/disable all form controls
             nameLabel.setEnabled(editable);
             nameText.setEnabled(editable);
@@ -689,6 +778,10 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     public void clearServerSelection()
     {
         uiSync.asyncExec( () -> {
+            if ( serverTable == null || serverTable.isDisposed() )
+            {
+                return;
+            }
             serverTable.deselectAll();
         } );
     }
@@ -702,6 +795,10 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     public void showError( String message )
     {
         uiSync.asyncExec( () -> {
+            if ( getShell() == null || getShell().isDisposed() )
+            {
+                return;
+            }
             MessageDialog.openError( getShell(), "Error", message );
         } );
     }

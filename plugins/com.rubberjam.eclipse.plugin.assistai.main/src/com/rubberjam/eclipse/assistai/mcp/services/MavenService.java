@@ -17,7 +17,7 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.e4.core.di.annotations.Creatable;
-import org.eclipse.e4.ui.di.UISynchronize;
+import com.rubberjam.eclipse.assistai.tools.UISynchronizeCallable;
 import org.eclipse.m2e.core.MavenPlugin;
 import org.eclipse.m2e.core.embedder.ICallable;
 import org.eclipse.m2e.core.embedder.IMaven;
@@ -37,7 +37,7 @@ public class MavenService
     ILog           logger;
 
     @Inject
-    UISynchronize  sync;
+    UISynchronizeCallable sync;
 
     @Inject
     ConsoleService consoleService;

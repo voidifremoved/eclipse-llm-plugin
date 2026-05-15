@@ -240,6 +240,10 @@ public class ModelListPreferencePage extends PreferencePage implements IWorkbenc
     public void showModels( java.util.List<ModelApiDescriptor> models )
     {
         uiSync.asyncExec( () -> {
+            if ( modelTable == null || modelTable.isDisposed() )
+            {
+                return;
+            }
             modelTable.removeAll();
             modelTable.clearAll();
             modelTable.deselectAll();
@@ -260,6 +264,10 @@ public class ModelListPreferencePage extends PreferencePage implements IWorkbenc
     public void showModelDetails( ModelApiDescriptor modelApiDescriptor )
     {
         uiSync.asyncExec( () -> {
+            if ( apiUrl == null || apiUrl.isDisposed() )
+            {
+                return;
+            }
             apiUrl.setText( modelApiDescriptor.apiUrl() );
             apiKey.setText( modelApiDescriptor.apiKey() );
             connectionTimeout.setText( String.valueOf(modelApiDescriptor.connectionTimeoutSeconds()) );
@@ -275,6 +283,10 @@ public class ModelListPreferencePage extends PreferencePage implements IWorkbenc
     public void clearModelDetails()
     {
         uiSync.asyncExec( () -> {
+            if ( apiUrl == null || apiUrl.isDisposed() )
+            {
+                return;
+            }
             apiUrl.setText( "" );
             apiKey.setText( "" );
             connectionTimeout.setText( "10" );
@@ -289,7 +301,11 @@ public class ModelListPreferencePage extends PreferencePage implements IWorkbenc
     
     public void setDetailsEditable( boolean editable )
     {
-        uiSync.asyncExec( () -> {            
+        uiSync.asyncExec( () -> {
+            if ( form == null || form.isDisposed() )
+            {
+                return;
+            }
             Arrays.stream( form.getChildren() )
                   .forEach( control -> control.setEnabled( editable ) );
             if ( editable )
@@ -304,6 +320,10 @@ public class ModelListPreferencePage extends PreferencePage implements IWorkbenc
     public void clearModelSelection()
     {
         uiSync.asyncExec( () -> {
+            if ( modelTable == null || modelTable.isDisposed() )
+            {
+                return;
+            }
             modelTable.deselectAll();
         } );
     }

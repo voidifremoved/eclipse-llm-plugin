@@ -28,7 +28,7 @@ import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.e4.core.di.annotations.Creatable;
-import org.eclipse.e4.ui.di.UISynchronize;
+import com.rubberjam.eclipse.assistai.tools.UISynchronizeCallable;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IJavaProject;
@@ -87,7 +87,7 @@ public class CodeEditingService
     ILog logger;
     
     @Inject
-    UISynchronize sync;
+    UISynchronizeCallable sync;
     
     @Inject
     CodeAnalysisService codeAnalysisService;

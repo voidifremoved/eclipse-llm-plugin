@@ -132,7 +132,9 @@ public class AgentViewPresenter implements IResourceCacheListener
             String userMessageId = UUID.randomUUID().toString();
             updateTabTitle( tabId, userText );
 
+            cacheMessage( tabState, userMessageId, "user", userText );
             applyToView( view -> {
+                tabState.draftText = "";
                 view.clearUserInput();
                 view.appendMessage( userMessageId, "user" );
                 view.setMessageHtml( userMessageId, userText );
@@ -142,18 +144,29 @@ public class AgentViewPresenter implements IResourceCacheListener
             String assistantMessageId = UUID.randomUUID().toString();
             tabState.pendingAssistantMessageId = assistantMessageId;
             tabState.pendingAssistantHtml.setLength( 0 );
+            cacheMessage( tabState, assistantMessageId, "assistant", "" );
             tabState.generating = true;
+            tabState.stopRequested = false;
+            tabState.generationId++;
+            tabState.toolMessageIds.clear();
+            tabState.toolNames.clear();
+            final int generationId = tabState.generationId;
 
             applyToView( view -> view.appendMessage( assistantMessageId, "assistant" ) );
 
-            tabState.currentStream = session.sendMessage( userText, tabAttachments )
+            tabState.currentStream = session.sendMessage( userText, tabAttachments, userMessageId )
                 .subscribeOn( Schedulers.boundedElastic() )
                 .subscribe(
                     chatResponse -> {
+                        if ( !isCurrentGeneration( tabState, generationId ) )
+                        {
+                            return;
+                        }
                         String content = chatResponse.getResult().getOutput().getText();
                         if ( content != null )
                         {
                             tabState.pendingAssistantHtml.append( content );
+                            updateCachedMessageContent( tabState, assistantMessageId, tabState.pendingAssistantHtml.toString() );
                             if ( activeTabId.equals( sessionManager.getActiveTabId() ) )
                             {
                                 String currentHtml = tabState.pendingAssistantHtml.toString();
@@ -162,19 +175,35 @@ public class AgentViewPresenter implements IResourceCacheListener
                         }
                     },
                     error -> {
+                        if ( !isCurrentGeneration( tabState, generationId ) )
+                        {
+                            return;
+                        }
                         logger.error( "Agent chat stream failed", error );
                         tabState.generating = false;
                         tabState.pendingAssistantMessageId = null;
+                        String errorMessage = toUserFacingStreamError( error );
+                        String finalMessage = tabState.pendingAssistantHtml.isEmpty()
+                                ? errorMessage
+                                : tabState.pendingAssistantHtml + "\n\n" + errorMessage;
+                        updateCachedMessageContent( tabState, assistantMessageId, finalMessage );
+                        session.appendAssistantResponse( assistantMessageId, finalMessage );
+                        sessionManager.persistTabs();
                         if ( activeTabId.equals( sessionManager.getActiveTabId() ) )
                         {
                             applyToView( view -> {
-                                view.setMessageHtml( assistantMessageId, "Error: " + error.getMessage() );
+                                view.setMessageHtml( assistantMessageId, finalMessage );
                                 view.setInputEnabled( true );
                             } );
                         }
                     },
                     () -> {
-                        session.appendAssistantResponse( tabState.pendingAssistantHtml.toString() );
+                        if ( !isCurrentGeneration( tabState, generationId ) )
+                        {
+                            return;
+                        }
+                        session.appendAssistantResponse( assistantMessageId, tabState.pendingAssistantHtml.toString() );
+                        updateCachedMessageContent( tabState, assistantMessageId, tabState.pendingAssistantHtml.toString() );
                         tabState.generating = false;
                         tabState.pendingAssistantMessageId = null;
                         sessionManager.persistTabs();
@@ -203,8 +232,64 @@ public class AgentViewPresenter implements IResourceCacheListener
         String tabId = sessionManagerProvider.get().getActiveTabId();
         if ( tabId != null )
         {
-            disposeStream( getTabState( tabId ) );
-            getTabState( tabId ).generating = false;
+            AgentTabState tabState = getTabState( tabId );
+            tabState.stopRequested = true;
+            tabState.generating = false;
+            tabState.generationId++;
+            disposeStream( tabState );
+            AgentSession session = sessionManagerProvider.get().getSession( tabId );
+            String partialResponse = tabState.pendingAssistantHtml.toString();
+            String assistantMessageId = tabState.pendingAssistantMessageId;
+            tabState.pendingAssistantMessageId = null;
+            String stoppedResponse = partialResponse + "\n\n_Stopped._";
+            if ( session != null && !partialResponse.isBlank() )
+            {
+                updateCachedMessageContent( tabState, assistantMessageId, stoppedResponse );
+                session.appendAssistantResponse( assistantMessageId, stoppedResponse );
+                sessionManagerProvider.get().persistTabs();
+            }
+            applyToView( view -> {
+                if ( assistantMessageId != null )
+                {
+                    if ( partialResponse.isBlank() )
+                    {
+                        removeCachedMessage( tabState, assistantMessageId );
+                        view.removeMessage( assistantMessageId );
+                    }
+                    else
+                    {
+                        view.setMessageHtml( assistantMessageId, stoppedResponse );
+                    }
+                }
+                for ( Map.Entry<String, String> entry : tabState.toolMessageIds.entrySet() )
+                {
+                    updateCachedMessageContent(
+                            tabState,
+                            entry.getValue(),
+                            toPersistedToolMessage(
+                                    tabState.toolNames.getOrDefault( entry.getKey(), "Tool" ),
+                                    "Stopped",
+                                    "" ) );
+                    if ( session != null )
+                    {
+                        session.updateMessageContent(
+                                entry.getValue(),
+                                toPersistedToolMessage(
+                                        tabState.toolNames.getOrDefault( entry.getKey(), "Tool" ),
+                                        "Stopped",
+                                        "" ) );
+                    }
+                    view.updateToolCallMessage(
+                            entry.getValue(),
+                            tabState.toolNames.getOrDefault( entry.getKey(), "Tool" ),
+                            "Stopped",
+                            "" );
+                }
+            } );
+            if ( session != null )
+            {
+                sessionManagerProvider.get().persistTabs();
+            }
         }
         applyToView( view -> view.setInputEnabled( true ) );
     }
@@ -234,9 +319,13 @@ public class AgentViewPresenter implements IResourceCacheListener
         tabState.pendingAssistantMessageId = null;
         tabState.pendingAssistantHtml.setLength( 0 );
         tabState.attachments.clear();
+        tabState.displayMessages.clear();
         sessionManager.newSession();
         applyToView( view -> {
-            view.renderConversationHistory( sessionManager.getSession( tabId ).getHistory() );
+            tabState.draftText = "";
+            view.clearRenderedTabHistory( tabId );
+            view.renderConversationHistory( tabId, getRenderableHistory( tabId, sessionManager.getSession( tabId ) ) );
+            view.setUserInputText( tabState.draftText );
             view.setAttachments( tabState.attachments );
             view.setInputEnabled( true );
         } );
@@ -257,7 +346,8 @@ public class AgentViewPresenter implements IResourceCacheListener
             applyToView( v -> {
                 v.addAgentTab( tabId, sessionManager.getTabTitle( tabId ) );
                 v.selectAgentTab( tabId );
-                v.renderConversationHistory( sessionManager.getSession( tabId ).getHistory() );
+                v.renderConversationHistory( tabId, getRenderableHistory( tabId, sessionManager.getSession( tabId ) ) );
+                v.setUserInputText( getTabState( tabId ).draftText );
             } );
             return;
         }
@@ -285,12 +375,21 @@ public class AgentViewPresenter implements IResourceCacheListener
             suppressTabSelection = true;
             v.selectAgentTab( tabId );
             suppressTabSelection = false;
-            v.renderConversationHistory( sessionManager.getSession( tabId ).getHistory() );
-            v.clearUserInput();
+            v.renderConversationHistory( tabId, getRenderableHistory( tabId, sessionManager.getSession( tabId ) ) );
+            v.setUserInputText( tabState.draftText );
             v.setAttachments( tabState.attachments );
             v.setInputEnabled( true );
         } );
         initializeAvailableModels();
+    }
+
+    public void onTabDraftChanged( String tabId, String draftText )
+    {
+        if ( tabId == null )
+        {
+            return;
+        }
+        getTabState( tabId ).draftText = draftText != null ? draftText : "";
     }
 
     public void onCloseAgentTab( String tabId )
@@ -333,16 +432,22 @@ public class AgentViewPresenter implements IResourceCacheListener
         sessionManager.setActiveTab( tabId );
         AgentTabState tabState = getTabState( tabId );
         AgentSession session = sessionManager.getSession( tabId );
+        List<ChatMessage> renderHistory = getRenderableHistory( tabId, session );
+        debugTab( "[AgentTabs] onTabSelected tabId=" + tabId
+                + " activeTabId=" + sessionManager.getActiveTabId()
+                + " cachedMessages=" + tabState.displayMessages.size()
+                + " sessionMessages=" + ( session != null ? session.getHistory().size() : -1 )
+                + " renderMessages=" + renderHistory.size() );
         applyToView( v -> {
             suppressTabSelection = true;
             v.selectAgentTab( tabId );
             suppressTabSelection = false;
-            v.renderConversationHistory( session.getHistory() );
+            v.renderConversationHistory( tabId, renderHistory );
             if ( tabState.generating && tabState.pendingAssistantMessageId != null )
             {
-                v.appendMessage( tabState.pendingAssistantMessageId, "assistant" );
                 v.setMessageHtml( tabState.pendingAssistantMessageId, tabState.pendingAssistantHtml.toString() );
             }
+            v.setUserInputText( tabState.draftText );
             v.setAttachments( new ArrayList<>( tabState.attachments ) );
             v.setInputEnabled( !tabState.generating );
         } );
@@ -359,15 +464,156 @@ public class AgentViewPresenter implements IResourceCacheListener
         ChatView view = registeredView;
         if ( view != null )
         {
-            uiSync.asyncExec( () -> action.accept( view ) );
+            uiSync.asyncExec( () -> {
+                if ( !view.isDisposed() )
+                {
+                    action.accept( view );
+                }
+            } );
             return;
         }
-        partAccessor.findMessageView().ifPresent( v -> uiSync.asyncExec( () -> action.accept( v ) ) );
+        partAccessor.findMessageView().ifPresent( v -> uiSync.asyncExec( () -> {
+            if ( !v.isDisposed() )
+            {
+                action.accept( v );
+            }
+        } ) );
     }
 
     private AgentTabState getTabState( String tabId )
     {
         return tabStates.computeIfAbsent( tabId, id -> new AgentTabState() );
+    }
+
+    private List<ChatMessage> getRenderableHistory( String tabId, AgentSession session )
+    {
+        AgentTabState tabState = getTabState( tabId );
+        if ( !tabState.displayMessages.isEmpty() )
+        {
+            debugTab( "[AgentTabs] getRenderableHistory from cache tabId=" + tabId
+                    + " count=" + tabState.displayMessages.size() );
+            return copyMessages( tabState.displayMessages );
+        }
+        if ( session == null )
+        {
+            debugTab( "[AgentTabs] getRenderableHistory no-session tabId=" + tabId );
+            return new ArrayList<>();
+        }
+        List<ChatMessage> history = session.getHistory();
+        debugTab( "[AgentTabs] getRenderableHistory from session tabId=" + tabId
+                + " sessionCount=" + history.size() );
+        syncCachedMessages( tabState, history );
+        return copyMessages( tabState.displayMessages );
+    }
+
+    private void debugTab( String message )
+    {
+        logger.info( message );
+        System.out.println( message );
+    }
+
+    private void syncCachedMessages( AgentTabState tabState, List<ChatMessage> messages )
+    {
+        tabState.displayMessages.clear();
+        if ( messages == null )
+        {
+            return;
+        }
+        for ( ChatMessage message : messages )
+        {
+            if ( message != null )
+            {
+                tabState.displayMessages.add( copyMessage( message ) );
+            }
+        }
+    }
+
+    private void cacheMessage( AgentTabState tabState, String messageId, String role, String content )
+    {
+        if ( tabState == null || messageId == null )
+        {
+            return;
+        }
+        ChatMessage message = new ChatMessage( messageId, role );
+        message.setContent( content != null ? content : "" );
+        tabState.displayMessages.add( message );
+    }
+
+    private void updateCachedMessageContent( AgentTabState tabState, String messageId, String content )
+    {
+        if ( tabState == null || messageId == null )
+        {
+            return;
+        }
+        for ( ChatMessage message : tabState.displayMessages )
+        {
+            if ( messageId.equals( message.getId() ) )
+            {
+                message.setContent( content != null ? content : "" );
+                return;
+            }
+        }
+    }
+
+    private void removeCachedMessage( AgentTabState tabState, String messageId )
+    {
+        if ( tabState == null || messageId == null )
+        {
+            return;
+        }
+        for ( int i = tabState.displayMessages.size() - 1; i >= 0; i-- )
+        {
+            ChatMessage message = tabState.displayMessages.get( i );
+            if ( message != null && messageId.equals( message.getId() ) )
+            {
+                tabState.displayMessages.remove( i );
+            }
+        }
+    }
+
+    private void moveCachedMessageToEnd( AgentTabState tabState, String messageId )
+    {
+        if ( tabState == null || messageId == null )
+        {
+            return;
+        }
+        ChatMessage matched = null;
+        for ( int i = tabState.displayMessages.size() - 1; i >= 0; i-- )
+        {
+            ChatMessage message = tabState.displayMessages.get( i );
+            if ( message != null && messageId.equals( message.getId() ) )
+            {
+                matched = message;
+                tabState.displayMessages.remove( i );
+                break;
+            }
+        }
+        if ( matched != null )
+        {
+            tabState.displayMessages.add( matched );
+        }
+    }
+
+    private List<ChatMessage> copyMessages( List<ChatMessage> messages )
+    {
+        List<ChatMessage> copy = new ArrayList<>();
+        for ( ChatMessage message : messages )
+        {
+            if ( message != null )
+            {
+                copy.add( copyMessage( message ) );
+            }
+        }
+        return copy;
+    }
+
+    private ChatMessage copyMessage( ChatMessage message )
+    {
+        ChatMessage copy = new ChatMessage( message.getId(), message.getName(), message.getRole() );
+        copy.setContent( message.getContent() );
+        copy.setAttachments( new ArrayList<>( message.getAttachments() ) );
+        copy.setFunctionCall( message.getFunctionCall() );
+        return copy;
     }
 
     private void ensureTabInView( String tabId, String title )
@@ -416,14 +662,35 @@ public class AgentViewPresenter implements IResourceCacheListener
         tabState.currentStream = null;
     }
 
+    private boolean isCurrentGeneration( AgentTabState tabState, int generationId )
+    {
+        return tabState != null && !tabState.stopRequested && tabState.generationId == generationId;
+    }
+
     private void onToolCallEvent( String tabId, ToolCallEvent event )
     {
         AgentSessionManager sessionManager = sessionManagerProvider.get();
         AgentTabState tabState = getTabState( tabId );
+        if ( tabState.stopRequested || !tabState.generating )
+        {
+            return;
+        }
         if ( event.status() == ToolCallStatus.STARTED )
         {
             String messageId = UUID.randomUUID().toString();
             tabState.toolMessageIds.put( event.id(), messageId );
+            tabState.toolNames.put( event.id(), event.toolName() );
+            cacheMessage( tabState, messageId, "tool", toPersistedToolMessage( event.toolName(), "Running", event.input() ) );
+            if ( tabState.pendingAssistantMessageId != null )
+            {
+                moveCachedMessageToEnd( tabState, tabState.pendingAssistantMessageId );
+            }
+            AgentSession session = sessionManager.getSession( tabId );
+            if ( session != null )
+            {
+                session.appendToolMessage( messageId, toPersistedToolMessage( event.toolName(), "Running", event.input() ) );
+                sessionManager.persistTabs();
+            }
             if ( tabId.equals( sessionManager.getActiveTabId() ) )
             {
                 applyToView( view -> {
@@ -446,16 +713,43 @@ public class AgentViewPresenter implements IResourceCacheListener
         {
             return;
         }
+        String status = event.status() == ToolCallStatus.FINISHED ? "Finished" : "Failed";
+        String details = event.output() != null ? event.output() : "";
+        updateCachedMessageContent( tabState, messageId, toPersistedToolMessage( event.toolName(), status, details ) );
+        AgentSession session = sessionManager.getSession( tabId );
+        if ( session != null )
+        {
+            session.updateMessageContent(
+                    messageId,
+                    toPersistedToolMessage( event.toolName(), status, details ) );
+            sessionManager.persistTabs();
+        }
         if ( tabId.equals( sessionManager.getActiveTabId() ) )
         {
-            String status = event.status() == ToolCallStatus.FINISHED ? "Finished" : "Failed";
-            String details = event.output() != null ? event.output() : "";
             applyToView( view -> view.updateToolCallMessage(
                     messageId,
                     event.toolName(),
                     status,
                     details ) );
         }
+    }
+
+    private String toPersistedToolMessage( String toolName, String status, String details )
+    {
+        return "**Tool:** `" + ( toolName != null ? toolName : "Tool" ) + "`\n\n"
+                + "**Status:** " + ( status != null ? status : "" ) + "\n\n"
+                + "```json\n" + ( details != null ? details : "" ) + "\n```";
+    }
+
+    private String toUserFacingStreamError( Throwable error )
+    {
+        String message = error != null && error.getMessage() != null ? error.getMessage() : "";
+        if ( message.contains( "No ToolCallback found for tool name:" ) )
+        {
+            return "Tool execution completed, but Spring AI returned a malformed follow-up tool call while streaming. "
+                    + "The tool result above is still available; please continue or retry the request.";
+        }
+        return "Error: " + message;
     }
 
     public void onSendPredefinedPrompt(com.rubberjam.eclipse.assistai.prompt.Prompts type, ChatMessage message) {
@@ -522,7 +816,16 @@ public class AgentViewPresenter implements IResourceCacheListener
         }
 
         uiSync.asyncExec(() -> {
-            FileDialog fileDialog = new FileDialog(display.getActiveShell(), SWT.OPEN);
+            if ( display.isDisposed() )
+            {
+                return;
+            }
+            var shell = display.getActiveShell();
+            if ( shell == null || shell.isDisposed() )
+            {
+                return;
+            }
+            FileDialog fileDialog = new FileDialog(shell, SWT.OPEN);
             fileDialog.setText("Select an Image");
 
             // Retrieve the last selected directory from the preferences
@@ -614,7 +917,12 @@ public class AgentViewPresenter implements IResourceCacheListener
 
     public void onCopyCode(String codeBlock) {
         // We use the clipboard to copy code block
-        Display.getDefault().asyncExec(() -> {
+        Display display = Display.getDefault();
+        if ( display == null || display.isDisposed() )
+        {
+            return;
+        }
+        display.asyncExec(() -> {
             org.eclipse.swt.dnd.Clipboard clipboard = new org.eclipse.swt.dnd.Clipboard(Display.getDefault());
             org.eclipse.swt.dnd.TextTransfer textTransfer = org.eclipse.swt.dnd.TextTransfer.getInstance();
             clipboard.setContents(new Object[] { codeBlock }, new org.eclipse.swt.dnd.Transfer[] { textTransfer });
@@ -623,7 +931,12 @@ public class AgentViewPresenter implements IResourceCacheListener
     }
 
     public void onApplyPatch(String codeBlock) {
-        Display.getDefault().asyncExec(() -> {
+        Display display = Display.getDefault();
+        if ( display == null || display.isDisposed() )
+        {
+            return;
+        }
+        display.asyncExec(() -> {
             Optional.ofNullable(PlatformUI.getWorkbench())
                     .map(workbench -> workbench.getActiveWorkbenchWindow())
                     .map(window -> window.getActivePage())
@@ -640,7 +953,12 @@ public class AgentViewPresenter implements IResourceCacheListener
     }
 
     public void onInsertCode(String codeBlock) {
-        Display.getDefault().asyncExec(() -> {
+        Display display = Display.getDefault();
+        if ( display == null || display.isDisposed() )
+        {
+            return;
+        }
+        display.asyncExec(() -> {
             Optional.ofNullable(PlatformUI.getWorkbench())
                     .map(workbench -> workbench.getActiveWorkbenchWindow())
                     .map(window -> window.getActivePage())
@@ -666,7 +984,12 @@ public class AgentViewPresenter implements IResourceCacheListener
     }
 
     public void onDiffCode(String codeBlock) {
-        Display.getDefault().asyncExec(() -> {
+        Display display = Display.getDefault();
+        if ( display == null || display.isDisposed() )
+        {
+            return;
+        }
+        display.asyncExec(() -> {
             Optional.ofNullable(PlatformUI.getWorkbench())
                     .map(workbench -> workbench.getActiveWorkbenchWindow())
                     .map(window -> window.getActivePage())
@@ -687,7 +1010,12 @@ public class AgentViewPresenter implements IResourceCacheListener
     }
 
     public void onNewFile(String codeBlock, String lang) {
-        Display.getDefault().asyncExec(() -> {
+        Display display = Display.getDefault();
+        if ( display == null || display.isDisposed() )
+        {
+            return;
+        }
+        display.asyncExec(() -> {
             IProject project = Optional.ofNullable(PlatformUI.getWorkbench())
                     .map(IWorkbench::getActiveWorkbenchWindow)
                     .map(IWorkbenchWindow::getActivePage)

@@ -9,7 +9,7 @@ import java.util.Optional;
 
 import org.eclipse.core.runtime.ILog;
 import org.eclipse.e4.core.di.annotations.Creatable;
-import org.eclipse.e4.ui.di.UISynchronize;
+import com.rubberjam.eclipse.assistai.tools.UISynchronizeCallable;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchWindow;
@@ -37,7 +37,7 @@ public class ConsoleService
     @Inject
     ILog logger;
     @Inject
-    UISynchronize sync;
+    UISynchronizeCallable sync;
     
     /**
      * Retrieves the recent output from Eclipse console(s).

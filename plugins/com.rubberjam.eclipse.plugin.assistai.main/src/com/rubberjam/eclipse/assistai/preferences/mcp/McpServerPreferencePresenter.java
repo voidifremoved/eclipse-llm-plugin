@@ -11,7 +11,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import org.eclipse.core.runtime.ILog;
@@ -119,9 +118,7 @@ public class McpServerPreferencePresenter
     public void addServer()
     {
         lastDiscoveredUrl = "";
-        view.clearServerSelection();
-        view.clearServerDetails();
-        view.setDetailsEditable( true );
+        view.prepareAddServer();
     }
 
     /**
@@ -169,7 +166,7 @@ public class McpServerPreferencePresenter
      */
     public void toggleServerEnabled( int serverIndex, boolean enabled )
     {
-        var servers = mcpServerRepository.listStoredServers();
+        List<McpServerDescriptor> servers = mcpServerRepository.listStoredServers();
         if ( serverIndex >= 0 && serverIndex < servers.size() )
         {
             McpServerDescriptor server = servers.get( serverIndex );
@@ -181,8 +178,7 @@ public class McpServerPreferencePresenter
                                                                    server.builtIn(),
                                                                    server.excludedTools(),
                                                                    server.url() );
-            servers.set( serverIndex, updated );
-            mcpServerRepository.save( servers );
+            mcpServerRepository.upsertStoredServer( updated );
             restartServers();
         }
     }
@@ -195,18 +191,18 @@ public class McpServerPreferencePresenter
      */
     public void removeServer( int selectedIndex )
     {
-        var servers = mcpServerRepository.listStoredServers();
+        List<McpServerDescriptor> servers = mcpServerRepository.listStoredServers();
         if ( selectedIndex >= 0 && selectedIndex < servers.size() )
         {
             McpServerDescriptor server = servers.get( selectedIndex );
             if ( !server.builtIn() )
             {
-                servers.remove( selectedIndex );
-                mcpServerRepository.save( servers );
+                mcpServerRepository.removeStoredServerByUid( server.uid() );
                 restartServers();
                 view.showServers( getServersWithStatus() );
                 view.clearServerDetails();
                 view.setDetailsEditable( false );
+                view.setAddingNewServer( false );
             }
         }
     }
@@ -214,22 +210,42 @@ public class McpServerPreferencePresenter
 
 
     /**
-     * Save a server
-     * 
-     * @param selectedIndex
-     *            the index of the server to save or -1 to add a new one
+     * Save a server from the details form.
+     *
+     * @param isNewServer
+     *            {@code true} when the user clicked Add (must not reuse table selection)
+     * @param displayIndex
+     *            index in the merged server table when editing an existing row
      * @param updatedServerStub
-     *            the updated server data
+     *            form data
      */
-    public void saveServer( int selectedIndex, McpServerDescriptor updatedServerStub )
+    public void saveServer( boolean isNewServer, int displayIndex, McpServerDescriptor updatedServerStub )
     {
-        List<McpServerDescriptor> storedDescriptors = mcpServerRepository.listStoredServers();
+        List<McpServerDescriptor> displayServers = mcpServerRepository.listStoredServers();
 
-        // Check for duplicate name
-        boolean nameExists = storedDescriptors.stream()
-                .filter( server -> !server.uid()
-                        .equals( selectedIndex >= 0 && selectedIndex < storedDescriptors.size() ? storedDescriptors.get( selectedIndex ).uid() : "" ) )
-                .anyMatch( server -> server.name().equals( updatedServerStub.name() ) );
+        String uid;
+        boolean builtIn = false;
+        if ( !isNewServer && displayIndex >= 0 && displayIndex < displayServers.size() )
+        {
+            McpServerDescriptor current = displayServers.get( displayIndex );
+            uid = current.uid();
+            builtIn = current.builtIn();
+        }
+        else
+        {
+            uid = UUID.randomUUID().toString();
+        }
+
+        final String uidToReplace = uid;
+        boolean nameExists = false;
+        for ( McpServerDescriptor server : displayServers )
+        {
+            if ( !uidToReplace.equals( server.uid() ) && server.name().equals( updatedServerStub.name() ) )
+            {
+                nameExists = true;
+                break;
+            }
+        }
 
         if ( nameExists )
         {
@@ -237,34 +253,21 @@ public class McpServerPreferencePresenter
             return;
         }
 
-        String uid;
-        Consumer<McpServerDescriptor> update;
+        McpServerDescriptor toStore = new McpServerDescriptor( uid,
+                updatedServerStub.name(),
+                updatedServerStub.command(),
+                updatedServerStub.environmentVariables(),
+                updatedServerStub.enabled(),
+                builtIn,
+                updatedServerStub.excludedTools(),
+                updatedServerStub.url() );
 
-        if ( selectedIndex >= 0 && selectedIndex < storedDescriptors.size() )
-        {
-            uid = storedDescriptors.get( selectedIndex ).uid();
-            update = server -> storedDescriptors.set( selectedIndex, server );
-        }
-        else
-        {
-            uid = UUID.randomUUID().toString();
-            update = server -> storedDescriptors.add( server );
-        }
-
-        McpServerDescriptor toStore = new McpServerDescriptor( uid, 
-                                                               updatedServerStub.name(), 
-                                                               updatedServerStub.command(),
-                                                               updatedServerStub.environmentVariables(), 
-                                                               updatedServerStub.enabled(), 
-                                                               false,
-                                                               updatedServerStub.excludedTools(),
-                                                               updatedServerStub.url() );
-
-        update.accept( toStore );
-        mcpServerRepository.save( storedDescriptors );
+        mcpServerRepository.upsertStoredServer( toStore );
         restartServers();
         view.showServers( getServersWithStatus() );
         view.clearServerDetails();
+        view.setDetailsEditable( false );
+        view.setAddingNewServer( false );
     }
 
     /**
@@ -275,6 +278,7 @@ public class McpServerPreferencePresenter
      */
     public void setSelectedServer( int selectedIndex )
     {
+        view.setAddingNewServer( false );
         var servers = mcpServerRepository.listStoredServers();
         if ( selectedIndex >= 0 && selectedIndex < servers.size() )
         {
@@ -327,7 +331,7 @@ public class McpServerPreferencePresenter
 
     public void toggleToolEnabled( int serverIndex, String toolName, boolean enabled )
     {
-        var servers = mcpServerRepository.listStoredServers();
+        List<McpServerDescriptor> servers = mcpServerRepository.listStoredServers();
         if ( serverIndex >= 0 && serverIndex < servers.size() )
         {
             McpServerDescriptor server = servers.get( serverIndex );
@@ -346,8 +350,7 @@ public class McpServerPreferencePresenter
             McpServerDescriptor updated = new McpServerDescriptor( server.uid(),
                     server.name(), server.command(), server.environmentVariables(),
                     server.enabled(), server.builtIn(), excludedTools, server.url() );
-            servers.set( serverIndex, updated );
-            mcpServerRepository.save( servers );
+            mcpServerRepository.upsertStoredServer( updated );
             restartServers();
         }
     }

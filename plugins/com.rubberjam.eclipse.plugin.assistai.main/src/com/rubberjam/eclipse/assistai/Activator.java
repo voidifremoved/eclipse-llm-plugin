@@ -4,6 +4,7 @@ import org.eclipse.e4.core.contexts.ContextInjectionFactory;
 import org.eclipse.e4.core.contexts.EclipseContextFactory;
 import org.eclipse.e4.core.contexts.IEclipseContext;
 import org.eclipse.ui.IWorkbench;
+import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
@@ -80,18 +81,37 @@ public class Activator extends AbstractUIPlugin
 
     public <T> T make ( Class<T> clazz )
     {
-        IEclipseContext eclipseContext;
+        return ContextInjectionFactory.make( clazz, resolveEclipseContext() );
+    }
+
+    private IEclipseContext resolveEclipseContext()
+    {
         try
         {
-            IWorkbench workbench = PlatformUI.getWorkbench();
-            eclipseContext = workbench.getService( IEclipseContext.class );
+            if ( PlatformUI.isWorkbenchRunning() )
+            {
+                IWorkbench workbench = PlatformUI.getWorkbench();
+                IWorkbenchWindow window = workbench.getActiveWorkbenchWindow();
+                if ( window != null )
+                {
+                    IEclipseContext windowContext = window.getService( IEclipseContext.class );
+                    if ( windowContext != null )
+                    {
+                        return windowContext;
+                    }
+                }
+                IEclipseContext workbenchContext = workbench.getService( IEclipseContext.class );
+                if ( workbenchContext != null )
+                {
+                    return workbenchContext;
+                }
+            }
         }
-        catch ( Exception e )
+        catch ( Exception ignored )
         {
-            BundleContext bundleContext = getBundle().getBundleContext();
-            eclipseContext =  EclipseContextFactory.getServiceContext( bundleContext );
+            // fall through
         }
-        T instance = ContextInjectionFactory.make( clazz, eclipseContext );
-        return instance;
+        BundleContext bundleContext = getBundle().getBundleContext();
+        return EclipseContextFactory.getServiceContext( bundleContext );
     }
 }

@@ -1,6 +1,7 @@
 package com.rubberjam.eclipse.assistai.view;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -112,6 +113,10 @@ public class ChatView
 
     private final Map<String, CTabItem> agentTabItems = new LinkedHashMap<>();
 
+    private final Map<String, List<ChatMessage>> renderedHistoryByTab = new LinkedHashMap<>();
+
+    private String selectedAgentTabId;
+
     private Browser              browser;
     
     private Text                 inputArea;
@@ -155,14 +160,39 @@ public class ChatView
         presenter.onViewVisible();
     }
 
+    public boolean isDisposed()
+    {
+        return inputArea == null || inputArea.isDisposed();
+    }
+
     public void clearChatView()
     {
-        uiSync.asyncExec( () -> initializeChatView( browser ) );
+        uiSync.asyncExec( () -> {
+            if ( !isDisposed() )
+            {
+                clearConversationDomInBrowser();
+            }
+        } );
     }
 
     public void clearUserInput()
     {
-        uiSync.asyncExec( () -> inputArea.setText( "" ) );
+        uiSync.asyncExec( () -> {
+            if ( inputArea != null && !inputArea.isDisposed() )
+            {
+                inputArea.setText( "" );
+            }
+        } );
+    }
+
+    public void setUserInputText( String text )
+    {
+        uiSync.asyncExec( () -> {
+            if ( inputArea != null && !inputArea.isDisposed() )
+            {
+                inputArea.setText( text != null ? text : "" );
+            }
+        } );
     }
 
     @PostConstruct
@@ -175,7 +205,7 @@ public class ChatView
         agentTabFolder = new CTabFolder( root, SWT.TOP | SWT.FLAT );
         agentTabFolder.setLayoutData( new GridData( SWT.FILL, SWT.CENTER, true, false ) );
         agentTabFolder.setBorderVisible( false );
-        agentTabFolder.setSimple( false );
+        agentTabFolder.setSimple( true );
         agentTabFolder.addSelectionListener( new SelectionAdapter()
         {
             @Override
@@ -184,6 +214,13 @@ public class ChatView
                 CTabItem item = agentTabFolder.getSelection();
                 if ( item != null && item.getData() instanceof String tabId )
                 {
+                    debugTab( "[AgentTabs] tab selection event tabId=" + tabId
+                            + " previousSelected=" + selectedAgentTabId );
+                    if ( selectedAgentTabId != null && inputArea != null && !inputArea.isDisposed() )
+                    {
+                        presenter.onTabDraftChanged( selectedAgentTabId, inputArea.getText() );
+                    }
+                    selectedAgentTabId = tabId;
                     presenter.onTabSelected( tabId );
                 }
             }
@@ -285,15 +322,23 @@ public class ChatView
         item.setText( title );
         item.setData( tabId );
         agentTabItems.put( tabId, item );
-        agentTabFolder.setSelection( item );
     }
 
     public void removeAgentTab( String tabId )
     {
         CTabItem item = agentTabItems.remove( tabId );
+        renderedHistoryByTab.remove( tabId );
         if ( item != null && !item.isDisposed() )
         {
             item.dispose();
+        }
+    }
+
+    public void clearRenderedTabHistory( String tabId )
+    {
+        if ( tabId != null )
+        {
+            renderedHistoryByTab.remove( tabId );
         }
     }
 
@@ -303,6 +348,7 @@ public class ChatView
         if ( item != null && !item.isDisposed() )
         {
             agentTabFolder.setSelection( item );
+            selectedAgentTabId = tabId;
         }
     }
 
@@ -322,17 +368,53 @@ public class ChatView
 
     public void renderConversationHistory( List<ChatMessage> messages )
     {
+        renderConversationHistory( selectedAgentTabId, messages );
+    }
+
+    public void renderConversationHistory( String tabId, List<ChatMessage> messages )
+    {
         uiSync.asyncExec( () -> {
+            if ( isDisposed() )
+            {
+                return;
+            }
+            if ( tabId != null && selectedAgentTabId != null && !tabId.equals( selectedAgentTabId ) )
+            {
+                debugTab( "[AgentTabs] skip render due selected mismatch tabId=" + tabId
+                        + " selectedTabId=" + selectedAgentTabId );
+                return;
+            }
+            List<ChatMessage> messagesToRender = messages;
+            if ( tabId != null )
+            {
+                if ( ( messagesToRender == null || messagesToRender.isEmpty() ) && renderedHistoryByTab.containsKey( tabId ) )
+                {
+                    messagesToRender = copyMessages( renderedHistoryByTab.get( tabId ) );
+                    debugTab( "[AgentTabs] render using view-cache fallback tabId=" + tabId
+                            + " fallbackCount=" + messagesToRender.size() );
+                }
+                else if ( messagesToRender != null )
+                {
+                    renderedHistoryByTab.put( tabId, copyMessages( messagesToRender ) );
+                    debugTab( "[AgentTabs] render caching tabId=" + tabId
+                            + " messageCount=" + messagesToRender.size() );
+                }
+            }
             if ( browser == null || browser.isDisposed() )
             {
+                debugTab( "[AgentTabs] render skipped browser unavailable tabId=" + tabId );
                 return;
             }
-            initializeChatView( browser );
-            if ( messages == null )
+            clearConversationDomInBrowser();
+            if ( messagesToRender == null )
             {
+                debugTab( "[AgentTabs] render with null messages tabId=" + tabId );
                 return;
             }
-            for ( ChatMessage message : messages )
+            debugTab( "[AgentTabs] rendering tabId=" + tabId
+                    + " selectedTabId=" + selectedAgentTabId
+                    + " messageCount=" + messagesToRender.size() );
+            for ( ChatMessage message : messagesToRender )
             {
                 if ( message == null || "system".equals( message.getRole() ) )
                 {
@@ -341,7 +423,14 @@ public class ChatView
                 appendMessageInBrowser( message.getId(), message.getRole() );
                 if ( message.getContent() != null && !message.getContent().isBlank() )
                 {
-                    setMessageHtmlInBrowser( message.getId(), message.getContent() );
+                    if ( "tool".equals( message.getRole() ) )
+                    {
+                        setPersistedToolMessageHtmlInBrowser( message.getId(), message.getContent() );
+                    }
+                    else
+                    {
+                        setMessageHtmlInBrowser( message.getId(), message.getContent() );
+                    }
                 }
             }
             if ( autoScrollEnabled )
@@ -349,6 +438,134 @@ public class ChatView
                 browser.execute( "window.scrollTo(0, document.body.scrollHeight);" );
             }
         } );
+    }
+
+    private List<ChatMessage> copyMessages( List<ChatMessage> messages )
+    {
+        List<ChatMessage> copy = new ArrayList<>();
+        if ( messages == null )
+        {
+            return copy;
+        }
+        for ( ChatMessage message : messages )
+        {
+            if ( message == null )
+            {
+                continue;
+            }
+            ChatMessage messageCopy = new ChatMessage( message.getId(), message.getName(), message.getRole() );
+            messageCopy.setContent( message.getContent() );
+            messageCopy.setAttachments( new ArrayList<>( message.getAttachments() ) );
+            messageCopy.setFunctionCall( message.getFunctionCall() );
+            copy.add( messageCopy );
+        }
+        return copy;
+    }
+
+    private void debugTab( String message )
+    {
+        logger.info( message );
+        System.out.println( message );
+    }
+
+    private List<ChatMessage> getOrCreateRenderedHistory( String tabId )
+    {
+        List<ChatMessage> messages = renderedHistoryByTab.get( tabId );
+        if ( messages == null )
+        {
+            messages = new ArrayList<>();
+            renderedHistoryByTab.put( tabId, messages );
+        }
+        return messages;
+    }
+
+    private void cacheAppendMessageForSelectedTab( String messageId, String role )
+    {
+        if ( selectedAgentTabId == null || messageId == null )
+        {
+            return;
+        }
+        List<ChatMessage> messages = getOrCreateRenderedHistory( selectedAgentTabId );
+        for ( ChatMessage message : messages )
+        {
+            if ( message != null && messageId.equals( message.getId() ) )
+            {
+                return;
+            }
+        }
+        messages.add( new ChatMessage( messageId, role != null ? role : "assistant" ) );
+    }
+
+    private void cacheUpdateMessageForSelectedTab( String messageId, String content )
+    {
+        if ( selectedAgentTabId == null || messageId == null )
+        {
+            return;
+        }
+        List<ChatMessage> messages = getOrCreateRenderedHistory( selectedAgentTabId );
+        for ( ChatMessage message : messages )
+        {
+            if ( message != null && messageId.equals( message.getId() ) )
+            {
+                message.setContent( content != null ? content : "" );
+                return;
+            }
+        }
+        ChatMessage created = new ChatMessage( messageId, "assistant" );
+        created.setContent( content != null ? content : "" );
+        messages.add( created );
+    }
+
+    private void cacheMoveMessageToEndForSelectedTab( String messageId )
+    {
+        if ( selectedAgentTabId == null || messageId == null )
+        {
+            return;
+        }
+        List<ChatMessage> messages = getOrCreateRenderedHistory( selectedAgentTabId );
+        ChatMessage matched = null;
+        for ( int i = messages.size() - 1; i >= 0; i-- )
+        {
+            ChatMessage message = messages.get( i );
+            if ( message != null && messageId.equals( message.getId() ) )
+            {
+                matched = message;
+                messages.remove( i );
+                break;
+            }
+        }
+        if ( matched != null )
+        {
+            messages.add( matched );
+        }
+    }
+
+    private void cacheRemoveMessageForSelectedTab( String messageId )
+    {
+        if ( selectedAgentTabId == null || messageId == null )
+        {
+            return;
+        }
+        List<ChatMessage> messages = renderedHistoryByTab.get( selectedAgentTabId );
+        if ( messages == null )
+        {
+            return;
+        }
+        for ( int i = messages.size() - 1; i >= 0; i-- )
+        {
+            ChatMessage message = messages.get( i );
+            if ( message != null && messageId.equals( message.getId() ) )
+            {
+                messages.remove( i );
+            }
+        }
+    }
+
+    private String toPersistedToolMessage( String toolName, String status, String details )
+    {
+        return "**Tool:** `" + ( toolName != null ? toolName : "Tool" ) + "`\n\n"
+                + "**Status:** " + ( status != null ? status : "" ) + "\n\n"
+                + "```json\n" + ( details != null ? details : "" ) + "\n```";
     }
 
     private ToolItem createNewAgentTabToolItem( ToolBar toolbar )
@@ -369,6 +586,10 @@ public class ChatView
             @Override
             public void widgetSelected( SelectionEvent e )
             {
+                if ( selectedAgentTabId != null && inputArea != null && !inputArea.isDisposed() )
+                {
+                    presenter.onTabDraftChanged( selectedAgentTabId, inputArea.getText() );
+                }
                 presenter.onNewAgentTab();
             }
         } );
@@ -583,7 +804,7 @@ public class ChatView
             logger.error(e.getMessage(), e);
         }
         
-        item.setToolTipText("Send message (Ctrl+Enter)");
+        item.setToolTipText( "Send message (Enter)" );
         
         item.addSelectionListener(new SelectionAdapter() {
             @Override
@@ -702,22 +923,30 @@ public class ChatView
         Text inputArea = new Text( parent, SWT.BORDER | SWT.MULTI | SWT.WRAP | SWT.V_SCROLL );
         
         // Set a prompt message
-        inputArea.setMessage("Type a message or question here... (Press Ctrl+Enter to send)");
-        
-        // Add a key listener to handle Ctrl+Enter to send the message
-        inputArea.addKeyListener(new KeyAdapter() {
+        inputArea.setMessage( "Type a message or question here... (Enter to send, Ctrl+Enter for new line)" );
+
+        inputArea.addKeyListener( new KeyAdapter()
+        {
             @Override
-            public void keyPressed(KeyEvent e) {
-                if (e.keyCode == SWT.CR && (e.stateMask & SWT.CTRL) != 0) {
-                    e.doit = false; // Prevent default behavior
-                    // Only send if there's actual text to send
-                    String text = inputArea.getText().trim();
-                    if (!text.isEmpty()) {
-                        presenter.onSendUserMessage( text );
-                    }
+            public void keyPressed( KeyEvent e )
+            {
+                if ( e.keyCode != SWT.CR )
+                {
+                    return;
+                }
+                if ( ( e.stateMask & SWT.CTRL ) != 0 )
+                {
+                    // Ctrl+Enter: default behaviour inserts a new line in the multi-line field
+                    return;
+                }
+                e.doit = false;
+                String text = inputArea.getText().trim();
+                if ( !text.isEmpty() )
+                {
+                    presenter.onSendUserMessage( text );
                 }
             }
-        });
+        } );
         
         createCustomMenu( inputArea );
         return inputArea;
@@ -842,6 +1071,24 @@ public class ChatView
         browser.setText( htmlTemplate );
     }
 
+    private void clearConversationDomInBrowser()
+    {
+        if ( browser == null || browser.isDisposed() )
+        {
+            return;
+        }
+        browser.execute( """
+                var content = document.getElementById('content');
+                if (content) {
+                    content.innerHTML = '';
+                }
+                var notifications = document.getElementById('notification-container');
+                if (notifications) {
+                    notifications.innerHTML = '';
+                }
+                """ );
+    }
+
 
 
     private String loadFonts()
@@ -893,7 +1140,12 @@ public class ChatView
     @Optional
     void onThemeChanged( @UIEventTopic("org/eclipse/e4/ui/css/swt/theme/ThemeManager/THEME_CHANGED") Object event )
     {
-        uiSync.asyncExec( () -> applyThemeCss() );
+        uiSync.asyncExec( () -> {
+            if ( !isDisposed() )
+            {
+                applyThemeCss();
+            }
+        } );
     }
 
     /**
@@ -915,7 +1167,14 @@ public class ChatView
 
     public void setMessageHtml( String messageId, String messageBody )
     {
-        uiSync.asyncExec( () -> setMessageHtmlInBrowser( messageId, messageBody ) );
+        uiSync.asyncExec( () -> {
+            if ( isDisposed() )
+            {
+                return;
+            }
+            cacheUpdateMessageForSelectedTab( messageId, messageBody );
+            setMessageHtmlInBrowser( messageId, messageBody );
+        } );
     }
 
     private void setMessageHtmlInBrowser( String messageId, String messageBody )
@@ -961,7 +1220,14 @@ public class ChatView
 
     public void appendMessage( String messageId, String role )
     {
-        uiSync.asyncExec( () -> appendMessageInBrowser( messageId, role ) );
+        uiSync.asyncExec( () -> {
+            if ( isDisposed() )
+            {
+                return;
+            }
+            cacheAppendMessageForSelectedTab( messageId, role );
+            appendMessageInBrowser( messageId, role );
+        } );
     }
 
     private void appendMessageInBrowser( String messageId, String role )
@@ -1014,6 +1280,12 @@ public class ChatView
     public void appendToolCallMessage( String messageId, String toolName, String status, String details )
     {
         uiSync.asyncExec( () -> {
+            if ( isDisposed() )
+            {
+                return;
+            }
+            cacheAppendMessageForSelectedTab( messageId, "tool" );
+            cacheUpdateMessageForSelectedTab( messageId, toPersistedToolMessage( toolName, status, details ) );
             appendMessageInBrowser( messageId, "tool" );
             setToolCallMessageHtmlInBrowser( messageId, toolName, status, details );
         } );
@@ -1021,12 +1293,29 @@ public class ChatView
 
     public void updateToolCallMessage( String messageId, String toolName, String status, String details )
     {
-        uiSync.asyncExec( () -> setToolCallMessageHtmlInBrowser( messageId, toolName, status, details ) );
+        uiSync.asyncExec( () -> {
+            if ( isDisposed() )
+            {
+                return;
+            }
+            cacheUpdateMessageForSelectedTab( messageId, toPersistedToolMessage( toolName, status, details ) );
+            setToolCallMessageHtmlInBrowser( messageId, toolName, status, details );
+        } );
+    }
+
+    public void finishToolCallMessage( String messageId, String toolName, String details )
+    {
+        updateToolCallMessage( messageId, toolName, "Finished", details );
     }
 
     public void moveMessageToEnd( String messageId )
     {
         uiSync.asyncExec( () -> {
+            if ( isDisposed() )
+            {
+                return;
+            }
+            cacheMoveMessageToEndForSelectedTab( messageId );
             if ( browser == null || browser.isDisposed() )
             {
                 return;
@@ -1047,22 +1336,57 @@ public class ChatView
         {
             return;
         }
-        String escapedToolName = escapeHtmlQuotes( escapeHtml( safeText( toolName ) ) );
-        String escapedStatus = escapeHtmlQuotes( escapeHtml( safeText( status ) ) );
-        String escapedDetails = escapeHtmlQuotes( fixLineBreaks( escapeHtml( safeText( details ) ) ) );
+        String escapedToolName = escapeHtml( safeText( toolName ) );
+        String escapedStatus = escapeHtml( safeText( status ) );
+        String escapedDetails = escapeHtml( safeText( details ) );
         String html = """
                 <div class="tool-call-title">
                     <span class="tool-call-name">${toolName}</span>
                     <span class="tool-call-status">${status}</span>
                 </div>
-                <details class="tool-call-details">
+                <details class="tool-call-details" open>
                     <summary>Tool details</summary>
                     <pre><code>${details}</code></pre>
                 </details>
                 """.replace( "${toolName}", escapedToolName )
                    .replace( "${status}", escapedStatus )
                    .replace( "${details}", escapedDetails );
-        browser.execute( "var target = document.getElementById(\"message-content-" + messageId + "\") || document.getElementById(\"message-" + messageId + "\"); if (target) { target.innerHTML = '" + html + "'; }" );
+        String encodedHtml = java.util.Base64.getEncoder().encodeToString(
+                html.getBytes( java.nio.charset.StandardCharsets.UTF_8 ) );
+        browser.execute( "var target = document.getElementById(\"message-content-" + messageId + "\") || document.getElementById(\"message-" + messageId + "\"); if (target) { target.innerHTML = atob('" + encodedHtml + "'); }" );
+    }
+
+    private void setPersistedToolMessageHtmlInBrowser( String messageId, String content )
+    {
+        String toolName = extractBetween( content, "**Tool:** `", "`" );
+        String status = extractBetween( content, "**Status:** ", "\n" );
+        String details = extractBetween( content, "```json\n", "\n```" );
+        if ( toolName.isBlank() && status.isBlank() && details.isBlank() )
+        {
+            setMessageHtmlInBrowser( messageId, content );
+            return;
+        }
+        setToolCallMessageHtmlInBrowser( messageId, toolName, status, details );
+    }
+
+    private String extractBetween( String text, String prefix, String suffix )
+    {
+        if ( text == null )
+        {
+            return "";
+        }
+        int start = text.indexOf( prefix );
+        if ( start < 0 )
+        {
+            return "";
+        }
+        start += prefix.length();
+        int end = text.indexOf( suffix, start );
+        if ( end < 0 )
+        {
+            return text.substring( start ).strip();
+        }
+        return text.substring( start, end ).strip();
     }
 
     private String safeText( String text )
@@ -1082,6 +1406,10 @@ public class ChatView
 	public void hideMessage(String messageId) 
 	{
 	    uiSync.asyncExec(() -> {
+	        if ( browser == null || browser.isDisposed() )
+	        {
+	            return;
+	        }
 	        browser.execute("""
 	                var node = document.getElementById("message-${id}");
 	                if(node) {
@@ -1095,12 +1423,20 @@ public class ChatView
 	public void removeMessage( String messageId )
     {
 	    uiSync.asyncExec(() -> {
-	        browser.execute("""
+	        if ( isDisposed() )
+	        {
+	            return;
+	        }
+            cacheRemoveMessageForSelectedTab( messageId );
+	        if ( browser != null && !browser.isDisposed() )
+	        {
+	            browser.execute("""
 	                var node = document.getElementById("message-${id}");
 	                if(node) {
 	                    node.remove();
 	                }
 	                """.replace("${id}", messageId));
+	        }
 	    });
     }
 
@@ -1112,6 +1448,10 @@ public class ChatView
     public void setAttachments( List<Attachment> attachments )
     {
         uiSync.asyncExec( () -> {
+            if ( imagesContainer == null || imagesContainer.isDisposed() )
+            {
+                return;
+            }
             // Dispose of existing children to avoid memory leaks and remove old
             // images
             for ( var child : imagesContainer.getChildren() )
@@ -1167,6 +1507,10 @@ public class ChatView
     public void setAvailableModels(List<ModelApiDescriptor> availableModels, String selected ) 
     {
     	uiSync.asyncExec( () -> {
+            if ( modelDropdownItem == null || modelDropdownItem.isDisposed() )
+            {
+                return;
+            }
             if ( availableModels == null || availableModels.isEmpty() )
             {
                 modelDropdownItem.setText( "No models" );
@@ -1183,9 +1527,16 @@ public class ChatView
         				   .findFirst()
         				   .ifPresent( model -> {
         					   uiSync.asyncExec( () -> {
+        						   if ( modelDropdownItem == null || modelDropdownItem.isDisposed() )
+        						   {
+        							   return;
+        						   }
         						   modelDropdownItem.setText( model.getDisplayName() );
         						   modelDropdownItem.setImage( model.getDisplayIcon() );
-        						   updateLayout( actionToolBar );
+        						   if ( actionToolBar != null && !actionToolBar.isDisposed() )
+        						   {
+        							   updateLayout( actionToolBar );
+        						   }
         					   });
         				   });
     		
@@ -1255,6 +1606,10 @@ public class ChatView
 	public void setInputEnabled( boolean enabled )
 	{
 	    uiSync.asyncExec( () -> {
+	        if ( inputArea == null || inputArea.isDisposed() )
+	        {
+	            return;
+	        }
 	        inputArea.setEnabled( enabled );
 	        if ( enabled ) {
 	            // Restore focus after a small delay to ensure browser operations complete
@@ -1613,6 +1968,10 @@ public class ChatView
 	 */
 	public void showNotification(String message, Duration duration, NotificationType type) {
 	    uiSync.asyncExec(() -> {
+	        if ( browser == null || browser.isDisposed() )
+	        {
+	            return;
+	        }
 	        String notificationId = "notification-" + (notificationIdCounter++);
 	        
 	        // Determine icon and color based on type
@@ -1652,7 +2011,10 @@ public class ChatView
 	        if (duration.toMillis()  > 0) {
 	            Display.getDefault().timerExec((int) duration.toMillis(), () -> {
 	                uiSync.asyncExec(() -> {
-	                    browser.execute(String.format("removeNotification('%s');", notificationId));
+	                    if ( browser != null && !browser.isDisposed() )
+	                    {
+	                        browser.execute(String.format("removeNotification('%s');", notificationId));
+	                    }
 	                });
 	            });
 	        }

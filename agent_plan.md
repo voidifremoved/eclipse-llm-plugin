@@ -103,7 +103,7 @@ If Spring AI tool callback APIs make wrapping awkward, start with a minimal tool
    - initialize from a model uid.
    - import persisted `ChatMessage` history.
    - export serializable history without transient system prompt duplication.
-   - Status: started with model uid access and message snapshot import/export.
+   - Status: mostly done. `AgentSession` now keeps stable UI history separately from Spring AI prompt history, preserves message IDs, exports/imports snapshots, and rebuilds prompt history after deletions.
 
 5. Extend `AgentSessionManager`:
    - load and save persisted tab descriptors.
@@ -117,7 +117,7 @@ If Spring AI tool callback APIs make wrapping awkward, start with a minimal tool
    - update only active tab on model picker changes.
    - refresh model dropdown on tab selection.
    - persist after message completion, clear, close, and tab title change.
-   - Status: started. Send path and model picker are now active-tab scoped.
+   - Status: mostly done. Send path and model picker are active-tab scoped; completed, stopped, and failed responses now persist.
 
 7. Update `ChatView`:
    - model selector displays active tab model.
@@ -126,7 +126,7 @@ If Spring AI tool callback APIs make wrapping awkward, start with a minimal tool
      - `appendToolCallMessage`
      - `updateToolCallMessage`
      - `finishToolCallMessage`
-   - Status: started with `appendToolCallMessage` and `updateToolCallMessage`.
+   - Status: mostly done with `appendToolCallMessage`, `updateToolCallMessage`, `finishToolCallMessage`, compact tool bubble markup, flattened tabs, and tab-strip plus button.
 
 8. Add tool event infrastructure:
    - `ToolCallEvent`
@@ -138,7 +138,7 @@ If Spring AI tool callback APIs make wrapping awkward, start with a minimal tool
 9. Render tool bubbles:
    - CSS for running/success/error tool states.
    - show tool name, concise status, collapsible arguments/result.
-   - Status: started with basic dark/light tool bubble styling.
+   - Status: mostly done. Live and restored persisted tool messages now render through the same tool bubble widget.
 
 10. Verification:
    - create multiple tabs, pick different models, send in parallel.

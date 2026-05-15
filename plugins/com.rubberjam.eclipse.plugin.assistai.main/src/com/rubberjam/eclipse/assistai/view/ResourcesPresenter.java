@@ -125,7 +125,7 @@ public class ResourcesPresenter implements IResourceCacheListener
                 .collect(java.util.stream.Collectors.joining(", ")));
         
         uiSync.asyncExec(() -> {
-            if (view != null)
+            if (view != null && !view.isDisposed())
             {
                 view.setTreeModel(treeModel, stats);
             }
@@ -220,10 +220,18 @@ public class ResourcesPresenter implements IResourceCacheListener
         uiSync.asyncExec(() -> {
             try
             {
-                IWorkbenchPage page = PlatformUI.getWorkbench()
-                                                .getActiveWorkbenchWindow()
-                                                .getActivePage();
-                
+                var workbench = PlatformUI.getWorkbench();
+                if ( workbench == null )
+                {
+                    return;
+                }
+                var window = workbench.getActiveWorkbenchWindow();
+                if ( window == null || window.getShell() == null || window.getShell().isDisposed() )
+                {
+                    return;
+                }
+                IWorkbenchPage page = window.getActivePage();
+
                 if (page == null)
                 {
                     logger.error("ResourcesPresenter: No active workbench page");

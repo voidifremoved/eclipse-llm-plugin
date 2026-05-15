@@ -195,6 +195,10 @@ public class McpHttpServerPreferencePage extends PreferencePage implements IWork
         {
             uiSync.asyncExec(() ->
             {
+                if ( statusLabel == null || statusLabel.isDisposed() )
+                {
+                    return;
+                }
                 String statusText = isRunning ? "HTTP Server is running" : "HTTP Server is disabled";
                 statusLabel.setText(statusText);
             });
@@ -206,6 +210,10 @@ public class McpHttpServerPreferencePage extends PreferencePage implements IWork
         {
             uiSync.asyncExec(() ->
             {
+                if ( endpointsText == null || endpointsText.isDisposed() )
+                {
+                    return;
+                }
                 var endpointsString = endpoints.stream().collect( Collectors.joining("\n") );
                 endpointsText.setText( endpointsString );
             });
@@ -288,16 +296,28 @@ public class McpHttpServerPreferencePage extends PreferencePage implements IWork
     {
         uiSync.asyncExec(() ->
         {
-            hostnameText.setText(prefs.hostname() );
-            portText.setText(Integer.toString( prefs.port() ));
-            tokenText.setText(prefs.token());
+        	if ( hostnameText != null && !hostnameText.isDisposed() )
+        	{
+        		hostnameText.setText(prefs.hostname() );
+        	}
+        	if ( portText != null && !portText.isDisposed() )
+        	{
+        		portText.setText(Integer.toString( prefs.port() ));
+        	}
+        	if ( tokenText != null && !tokenText.isDisposed() )
+        	{
+        		tokenText.setText(prefs.token());
+        	}
         });
     }
 
     public void updateHttpMcpEnbled( boolean enabled )
     {
         uiSync.asyncExec(() -> {
-            enabledCheckbox.setSelection( enabled );
+        	if ( enabledCheckbox != null && !enabledCheckbox.isDisposed() )
+        	{
+        		enabledCheckbox.setSelection( enabled );
+        	}
         } );
 
     }

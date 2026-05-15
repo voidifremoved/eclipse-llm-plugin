@@ -81,7 +81,7 @@ public class AgentSessionManager
     public void setActiveTab( String tabId )
     {
         ensureLoaded();
-        if ( sessions.containsKey( tabId ) )
+        if ( sessions.containsKey( tabId ) && !tabId.equals( activeTabId ) )
         {
             activeTabId = tabId;
             persistTabs();

@@ -317,7 +317,16 @@ public class ChatViewPresenter implements IResourceCacheListener
         }
         
         uiSync.asyncExec( () -> {
-            FileDialog fileDialog = new FileDialog( display.getActiveShell(), SWT.OPEN );
+            if ( display.isDisposed() )
+            {
+                return;
+            }
+            var shell = display.getActiveShell();
+            if ( shell == null || shell.isDisposed() )
+            {
+                return;
+            }
+            FileDialog fileDialog = new FileDialog( shell, SWT.OPEN );
             fileDialog.setText( "Select an Image" );
 
             // Retrieve the last selected directory from the preferences
@@ -350,7 +359,12 @@ public class ChatViewPresenter implements IResourceCacheListener
     public void applyToView( Consumer<? super ChatView> consumer )
     {
         uiSync.asyncExec( () -> {
-            partAccessor.findMessageView().ifPresent( consumer );
+            partAccessor.findMessageView().ifPresent( v -> {
+                if ( !v.isDisposed() )
+                {
+                    consumer.accept( v );
+                }
+            } );
         });
     }
 
@@ -380,6 +394,12 @@ public class ChatViewPresenter implements IResourceCacheListener
        uiSync.asyncExec(() -> {
             try 
             {
+                
+                var w = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+                if ( w == null || w.getShell() == null || w.getShell().isDisposed() )
+                {
+                    return;
+                }
                 Optional.ofNullable(PlatformUI.getWorkbench())
                     .map(workbench -> workbench.getActiveWorkbenchWindow())
                     .map(window -> window.getActivePage())
@@ -428,6 +448,16 @@ public class ChatViewPresenter implements IResourceCacheListener
     public void onDiffCode(String codeBlock) {
         uiSync.asyncExec(() -> {
             try {
+ 
+                if ( PlatformUI.getWorkbench() == null )
+                {
+                    return;
+                }
+                var w = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+                if ( w == null || w.getShell() == null || w.getShell().isDisposed() )
+                {
+                    return;
+                }
                 Optional.ofNullable(PlatformUI.getWorkbench())
                     .map(workbench -> workbench.getActiveWorkbenchWindow())
                     .map(window -> window.getActivePage())
@@ -475,7 +505,17 @@ public class ChatViewPresenter implements IResourceCacheListener
         uiSync.asyncExec(() -> {
             try 
             {
-                IProject project = Optional.ofNullable( PlatformUI.getWorkbench() )
+                var workbench = PlatformUI.getWorkbench();
+                if ( workbench == null )
+                {
+                    return;
+                }
+                var window = workbench.getActiveWorkbenchWindow();
+                if ( window == null || window.getShell() == null || window.getShell().isDisposed() )
+                {
+                    return;
+                }
+                IProject project = Optional.ofNullable( workbench )
                         .map(IWorkbench::getActiveWorkbenchWindow)
                         .map( IWorkbenchWindow::getActivePage )
                         .map( IWorkbenchPage::getActiveEditor )

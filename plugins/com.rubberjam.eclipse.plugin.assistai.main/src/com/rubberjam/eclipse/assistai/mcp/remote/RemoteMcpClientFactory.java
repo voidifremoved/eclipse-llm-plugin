@@ -10,6 +10,8 @@ import java.util.Objects;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
+import io.modelcontextprotocol.json.McpJsonMapper;
+import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapperSupplier;
 import io.modelcontextprotocol.json.schema.jackson2.JacksonJsonSchemaValidatorSupplier;
 import io.modelcontextprotocol.spec.McpSchema;
 
@@ -20,6 +22,12 @@ public final class RemoteMcpClientFactory
 {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds( 15 );
 
+    /**
+     * OSGi cannot use {@code ServiceLoader} across bundle class loaders; MCP HTTP transport must
+     * receive an explicit mapper (see {@code SdkHttpStreamingTest} class javadoc).
+     */
+    private static final JacksonMcpJsonMapperSupplier JSON_MAPPER_SUPPLIER = new JacksonMcpJsonMapperSupplier();
+
     private RemoteMcpClientFactory()
     {
     }
@@ -29,9 +37,11 @@ public final class RemoteMcpClientFactory
         Objects.requireNonNull( url );
         McpHttpEndpoint endpoint = McpHttpEndpoint.parse( url );
         Map<String, String> safeHeaders = headers != null ? headers : Collections.emptyMap();
+        McpJsonMapper jsonMapper = JSON_MAPPER_SUPPLIER.get();
 
         var transportBuilder = HttpClientStreamableHttpTransport.builder( endpoint.baseUrl() )
-                .endpoint( endpoint.endpointPath() );
+                .endpoint( endpoint.endpointPath() )
+                .jsonMapper( jsonMapper );
         if ( !safeHeaders.isEmpty() )
         {
             transportBuilder.httpRequestCustomizer( ( requestBuilder, method, uri, body, context ) -> {

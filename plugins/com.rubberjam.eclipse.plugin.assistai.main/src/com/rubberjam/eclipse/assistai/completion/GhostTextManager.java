@@ -18,6 +18,7 @@ import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.widgets.Display;
 
 import com.rubberjam.eclipse.assistai.tools.UISynchronizeCallable;
+import com.rubberjam.eclipse.assistai.tools.WidgetGuards;
 
 /**
  * Manages ghost text (inline completion preview) in the editor. Shows
@@ -166,7 +167,12 @@ public class GhostTextManager
                     // Any typing dismisses ghost text
                     if ( e.text.length() > 0 || e.start != e.end )
                     {
-                        uiSync.asyncExec( () -> dismissCompletion() );
+                        uiSync.asyncExec( () -> {
+                            if ( WidgetGuards.isAlive( styledText ) )
+                            {
+                                dismissCompletion();
+                            }
+                        } );
                     }
                 }
             }
@@ -729,10 +735,22 @@ public class GhostTextManager
     /**
      * Dismisses the completion without accepting.
      */
+    public boolean isWidgetAlive()
+    {
+        return WidgetGuards.isAlive( styledText );
+    }
+
     public void dismissCompletion()
     {
         if ( !isShowing )
         {
+            return;
+        }
+
+        if ( !WidgetGuards.isAlive( styledText ) )
+        {
+            ghostText = null;
+            isShowing = false;
             return;
         }
 
