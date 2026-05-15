@@ -11,6 +11,7 @@ import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRetistry;
 
 import io.modelcontextprotocol.client.McpSyncClient;
 import jakarta.inject.Inject;
+import jakarta.inject.Provider;
 import jakarta.inject.Singleton;
 
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
@@ -24,14 +25,14 @@ import org.springframework.ai.tool.ToolCallback;
 public class McpToolBridge
 {
     @Inject
-    private InMemoryMcpClientRetistry mcpClientRegistry;
+    private Provider<InMemoryMcpClientRetistry> mcpClientRegistryProvider;
 
     /**
      * Spring AI tool callbacks for every enabled MCP client.
      */
     public ToolCallback[] getToolCallbacks()
     {
-        List<McpSyncClient> clients = new ArrayList<>( mcpClientRegistry.listEnabledClients().values() );
+        List<McpSyncClient> clients = new ArrayList<>( mcpClientRegistryProvider.get().listEnabledClients().values() );
         List<ToolCallback> callbacks = SyncMcpToolCallbackProvider.syncToolCallbacks( clients );
         return callbacks.toArray( new ToolCallback[0] );
     }

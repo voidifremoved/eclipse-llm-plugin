@@ -36,7 +36,6 @@ import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapperSupplier;
 import io.modelcontextprotocol.json.schema.jackson2.JacksonJsonSchemaValidatorSupplier;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.spec.McpClientTransport;
-import jakarta.annotation.PostConstruct;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
@@ -48,6 +47,8 @@ public class InMemoryMcpClientRetistry
     private Map<String, McpSyncClient> clients = new HashMap<>();
 
     private List<McpSyncServer>        servers = new ArrayList<>();
+
+    private boolean                    initialized;
 
     @Inject
     private ILog                       logger;
@@ -69,11 +70,27 @@ public class InMemoryMcpClientRetistry
     }
 
     /**
-     * Initializes the MCP clients and servers. This method is called after the
-     * construction of the object.
+     * Loads enabled MCP clients on first use. Deferred from {@code @PostConstruct} so E4 can
+     * construct {@link com.rubberjam.eclipse.assistai.agent.McpToolBridge} and related beans first.
      */
-    @PostConstruct
-    public void init()
+    public void ensureInitialized()
+    {
+        if ( initialized )
+        {
+            return;
+        }
+        synchronized ( this )
+        {
+            if ( initialized )
+            {
+                return;
+            }
+            loadClients();
+            initialized = true;
+        }
+    }
+
+    private void loadClients()
     {
         var stored = mcpServerRepository.listStoredServers();
         var builtin = mcpServerRepository.listBuiltInServers();
@@ -81,7 +98,10 @@ public class InMemoryMcpClientRetistry
         initializeBuiltInServers( stored, builtin );
         initializeUserDefinedServers( stored );
 
-        clients.entrySet().stream().forEach( this::gracefullyInitialize );
+        for ( Map.Entry<String, McpSyncClient> client : clients.entrySet() )
+        {
+            gracefullyInitialize( client );
+        }
     }
     
     private void gracefullyInitialize( Map.Entry<String, McpSyncClient> client )
@@ -224,11 +244,13 @@ public class InMemoryMcpClientRetistry
      */
     public Map<String, McpSyncClient> listClients()
     {
+        ensureInitialized();
         return clients;
     }
     
     public Map<String, McpSyncClient> listEnabledClients()
     {
+        ensureInitialized();
     	// map server name to its enabled status
     	Map<String, Boolean> enabled = mcpServerRepository.listStoredServers().stream()
     													  .collect( Collectors.toMap(McpServerDescriptor::name, McpServerDescriptor::enabled));
@@ -247,6 +269,7 @@ public class InMemoryMcpClientRetistry
      */
     public Optional<McpSyncClient> findClient( String clientName )
     {
+        ensureInitialized();
         return Optional.ofNullable( clients.get( clientName ) );
     }
 
@@ -255,7 +278,8 @@ public class InMemoryMcpClientRetistry
         handleShutdown();
         clients.clear();
         servers.clear();
-        init();
+        initialized = false;
+        ensureInitialized();
     }
 
     

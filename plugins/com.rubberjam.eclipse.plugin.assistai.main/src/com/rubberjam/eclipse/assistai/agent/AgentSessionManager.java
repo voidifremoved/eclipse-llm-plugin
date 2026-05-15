@@ -6,6 +6,7 @@ import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptorRepository;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Provider;
 import jakarta.inject.Singleton;
 
 @Creatable
@@ -13,11 +14,12 @@ import jakarta.inject.Singleton;
 public class AgentSessionManager
 {
     @Inject private ChatModelRegistry modelRegistry;
-    @Inject private McpToolBridge toolBridge;
+    @Inject private Provider<McpToolBridge> toolBridgeProvider;
     @Inject private ModelApiDescriptorRepository modelRepository;
     @Inject private AgentSystemPromptBuilder promptBuilder;
 
     private AgentSession currentSession;
+    private McpToolBridge toolBridge;
 
     public AgentSession getOrCreateSession()
     {
@@ -31,7 +33,7 @@ public class AgentSessionManager
     public AgentSession newSession()
     {
         String systemPrompt = promptBuilder.buildSystemPrompt();
-        currentSession = new AgentSession(modelRegistry, toolBridge, systemPrompt);
+        currentSession = new AgentSession(modelRegistry, getToolBridge(), systemPrompt);
 
         ModelApiDescriptor currentModel = modelRepository.getChatModelInUse();
         if (currentModel != null) {
@@ -56,5 +58,14 @@ public class AgentSessionManager
             currentSession.clear();
             currentSession = null;
         }
+    }
+
+    private McpToolBridge getToolBridge()
+    {
+        if ( toolBridge == null )
+        {
+            toolBridge = toolBridgeProvider.get();
+        }
+        return toolBridge;
     }
 }

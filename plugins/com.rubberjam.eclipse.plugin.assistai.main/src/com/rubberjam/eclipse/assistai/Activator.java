@@ -8,6 +8,10 @@ import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
 
+import io.micrometer.context.ContextAccessor;
+import io.micrometer.context.ContextRegistry;
+import reactor.util.context.ReactorContextAccessor;
+
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptorRepository;
 import com.rubberjam.eclipse.assistai.preferences.mcp.McpHttpServerPreferencePresenter;
 import com.rubberjam.eclipse.assistai.preferences.mcp.McpServerPreferencePresenter;
@@ -23,6 +27,24 @@ public class Activator extends AbstractUIPlugin
     {
         super.start(context);
         plugin = this;
+        registerReactorContextAccessor();
+    }
+
+    /**
+     * OSGi does not reliably load {@link ReactorContextAccessor} via {@code ServiceLoader},
+     * but Spring AI / Micrometer enable Reactor context propagation which requires it.
+     */
+    private void registerReactorContextAccessor()
+    {
+        ContextRegistry registry = ContextRegistry.getInstance();
+        for (ContextAccessor accessor : registry.getContextAccessors())
+        {
+            if (accessor instanceof ReactorContextAccessor)
+            {
+                return;
+            }
+        }
+        registry.registerContextAccessor(new ReactorContextAccessor());
     }
 
     public static Activator getDefault()

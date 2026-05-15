@@ -27,7 +27,7 @@ public class ChatModelFactory
 
     private Object createModel(ModelApiDescriptor descriptor)
     {
-        String apiUrl = descriptor.apiUrl();
+        String apiUrl = toOpenAiApiBaseUrl( descriptor.apiUrl() );
 
         var apiBuilder = OpenAiApi.builder()
             .baseUrl(apiUrl)
@@ -40,5 +40,31 @@ public class ChatModelFactory
                 .temperature(descriptor.scaledTemperature().map(Float::doubleValue).orElse(null))
                 .build())
             .build();
+    }
+
+    /**
+     * Spring AI {@link OpenAiApi} appends {@code /v1/chat/completions} to the base URL.
+     * Model descriptors often store the full path for the legacy HTTP clients.
+     */
+    private static String toOpenAiApiBaseUrl( String apiUrl )
+    {
+        if ( apiUrl == null || apiUrl.isBlank() )
+        {
+            return apiUrl;
+        }
+        String base = apiUrl.trim();
+        while ( base.endsWith( "/" ) )
+        {
+            base = base.substring( 0, base.length() - 1 );
+        }
+        if ( base.endsWith( "/v1/chat/completions" ) )
+        {
+            return base.substring( 0, base.length() - "/v1/chat/completions".length() );
+        }
+        if ( base.endsWith( "/chat/completions" ) )
+        {
+            return base.substring( 0, base.length() - "/chat/completions".length() );
+        }
+        return base;
     }
 }

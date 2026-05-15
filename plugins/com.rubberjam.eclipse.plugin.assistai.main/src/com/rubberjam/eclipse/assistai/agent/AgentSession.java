@@ -42,7 +42,7 @@ public class AgentSession
         ChatModel chatModel = modelRegistry.getModel(model.uid());
         this.chatClient = ChatClient.builder(chatModel)
                 .defaultSystem(systemPrompt)
-                .defaultTools(toolBridge.getToolCallbacks())
+                .defaultToolCallbacks(toolBridge.getToolCallbacks())
                 .build();
     }
 

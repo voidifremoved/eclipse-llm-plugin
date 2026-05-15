@@ -21,6 +21,7 @@ import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.texteditor.ITextEditor;
 
+import com.rubberjam.eclipse.assistai.Activator;
 import com.rubberjam.eclipse.assistai.view.dnd.handlers.ResourceCacheHelper;
 
 import jakarta.inject.Inject;
@@ -28,14 +29,13 @@ import jakarta.inject.Inject;
 public class AddToAIResourcesHandler
 {
     @Inject
-    private ResourceCacheHelper resourceCacheHelper;
-
-    @Inject
     private ILog logger;
 
     @Execute
     public void execute()
     {
+        ResourceCacheHelper resourceCacheHelper = Activator.getDefault().make(ResourceCacheHelper.class);
+
         IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
         if ( page == null )
         {
@@ -46,15 +46,15 @@ public class AddToAIResourcesHandler
 
         if ( selection instanceof IStructuredSelection structured && !structured.isEmpty() )
         {
-            handleStructuredSelection( structured );
+            handleStructuredSelection( resourceCacheHelper, structured );
         }
         else
         {
-            handleEditorContext( page );
+            handleEditorContext( resourceCacheHelper, page );
         }
     }
 
-    private void handleStructuredSelection( IStructuredSelection selection )
+    private void handleStructuredSelection( ResourceCacheHelper resourceCacheHelper, IStructuredSelection selection )
     {
         for ( var it = selection.iterator(); it.hasNext(); )
         {
@@ -77,11 +77,11 @@ public class AddToAIResourcesHandler
             }
             else if ( element instanceof ICompilationUnit cu )
             {
-                addCompilationUnit( cu );
+                addCompilationUnit( resourceCacheHelper, cu );
             }
             else if ( element instanceof IPackageFragment pkg )
             {
-                addPackageFragment( pkg );
+                addPackageFragment( resourceCacheHelper, pkg );
             }
             else if ( element instanceof IJavaElement javaElement )
             {
@@ -94,7 +94,7 @@ public class AddToAIResourcesHandler
         }
     }
 
-    private void handleEditorContext( IWorkbenchPage page )
+    private void handleEditorContext( ResourceCacheHelper resourceCacheHelper, IWorkbenchPage page )
     {
         IEditorPart editor = page.getActiveEditor();
         if ( editor == null )
@@ -113,7 +113,7 @@ public class AddToAIResourcesHandler
                     resourceCacheHelper.addJavaMethod( method );
                     return;
                 }
-                else if ( resolved instanceof IType type )
+                if ( resolved instanceof IType type )
                 {
                     resourceCacheHelper.addJavaType( type );
                     return;
@@ -150,7 +150,7 @@ public class AddToAIResourcesHandler
         return null;
     }
 
-    private void addCompilationUnit( ICompilationUnit cu )
+    private void addCompilationUnit( ResourceCacheHelper resourceCacheHelper, ICompilationUnit cu )
     {
         try
         {
@@ -166,7 +166,7 @@ public class AddToAIResourcesHandler
         }
     }
 
-    private void addPackageFragment( IPackageFragment pkg )
+    private void addPackageFragment( ResourceCacheHelper resourceCacheHelper, IPackageFragment pkg )
     {
         try
         {

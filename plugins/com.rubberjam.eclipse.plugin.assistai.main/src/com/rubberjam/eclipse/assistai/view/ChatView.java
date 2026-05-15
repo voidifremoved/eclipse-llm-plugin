@@ -226,6 +226,8 @@ public class ChatView
         dropManager.registerDropTarget( controls );
 
         clearAttachments();
+
+        presenter.onViewVisible();
     }
 
     public void setupAutocomplete(Text textField) {
@@ -933,6 +935,15 @@ public class ChatView
     public void setAvailableModels(List<ModelApiDescriptor> availableModels, String selected ) 
     {
     	uiSync.asyncExec( () -> {
+            if ( availableModels == null || availableModels.isEmpty() )
+            {
+                modelDropdownItem.setText( "No models" );
+                modelDropdownItem.setToolTipText(
+                    "Add a model under Window > Preferences > Assist Agent > Models" );
+                updateLayout( actionToolBar );
+                return;
+            }
+
         	// update menu button with model name and icon
         	availableModels.stream()
         				   .filter( model -> model.uid().equals(selected) )

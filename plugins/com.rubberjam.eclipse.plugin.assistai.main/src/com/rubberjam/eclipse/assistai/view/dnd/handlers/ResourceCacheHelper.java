@@ -32,6 +32,7 @@ import com.google.common.collect.Sets;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.inject.Inject;
+import jakarta.inject.Provider;
 import jakarta.inject.Singleton;
 
 /**
@@ -53,7 +54,7 @@ public class ResourceCacheHelper
     private ContentTypeDetector contentTypeDetector;
     
     @Inject
-    private AgentViewPresenter presenter;
+    private Provider<AgentViewPresenter> presenterProvider;
     
     @Inject
     private ILog logger;
@@ -84,7 +85,7 @@ public class ResourceCacheHelper
             {
                 // Use Attachment system for images - LLMs have dedicated vision APIs
                 ImageData imageData = new ImageData(file.getLocation().toFile().getAbsolutePath());
-                presenter.onAttachmentAdded(imageData);
+                notifyImageAttachment(imageData);
                 logger.info("Added workspace image as attachment: " + file.getFullPath());
             }
             else
@@ -266,6 +267,18 @@ public class ResourceCacheHelper
     }
     
     // --- Private helper methods ---
+
+    private void notifyImageAttachment(ImageData imageData)
+    {
+        try
+        {
+            presenterProvider.get().onAttachmentAdded(imageData);
+        }
+        catch (Exception e)
+        {
+            logger.warn("Could not add image attachment to chat view: " + e.getMessage());
+        }
+    }
     
     private boolean isTextFile(IFile file) throws CoreException
     {

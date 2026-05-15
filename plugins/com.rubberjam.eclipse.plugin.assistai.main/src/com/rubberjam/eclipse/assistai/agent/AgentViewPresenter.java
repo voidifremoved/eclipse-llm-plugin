@@ -1,10 +1,13 @@
 package com.rubberjam.eclipse.assistai.agent;
 
 import java.io.File;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.eclipse.e4.core.di.annotations.Creatable;
 import org.eclipse.e4.ui.di.UISynchronize;
@@ -32,13 +35,18 @@ import com.rubberjam.eclipse.assistai.resources.IResourceCacheListener;
 import com.rubberjam.eclipse.assistai.resources.ResourceCacheEvent;
 import com.rubberjam.eclipse.assistai.view.ChatView;
 import com.rubberjam.eclipse.assistai.view.PartAccessor;
+import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptorRepository;
+import com.rubberjam.eclipse.assistai.prompt.Prompts;
 import com.rubberjam.eclipse.assistai.view.ApplyPatchWizardHelper;
+import com.rubberjam.eclipse.assistai.view.ChatView.NotificationType;
 import com.rubberjam.eclipse.assistai.mcp.services.CodeEditingService;
 import com.rubberjam.eclipse.assistai.tools.ResourceUtilities;
 import java.util.Optional;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.inject.Inject;
+import jakarta.inject.Provider;
 import jakarta.inject.Singleton;
 import reactor.core.scheduler.Schedulers;
 
@@ -47,7 +55,7 @@ import reactor.core.scheduler.Schedulers;
 @SuppressWarnings("restriction")
 public class AgentViewPresenter implements IResourceCacheListener
 {
-    @Inject private AgentSessionManager sessionManager;
+    @Inject private Provider<AgentSessionManager> sessionManagerProvider;
     @Inject private PartAccessor partAccessor;
     @Inject private PromptRepository promptRepository;
     @Inject private ModelApiDescriptorRepository modelRepository;
@@ -70,59 +78,88 @@ public class AgentViewPresenter implements IResourceCacheListener
 
     public void onSendUserMessage(String text, List<Attachment> attachments)
     {
-        AgentSession session = sessionManager.getOrCreateSession();
-
-        // Handle slash commands mapping manually, similar to ChatViewPresenter
-        if (text.startsWith("/")) {
-            String[] parts = text.split(" ", 2);
-            String command = parts[0].substring(1);
-            String rest = parts.length > 1 ? parts[1] : "";
-            try {
-                String template = promptRepository.getPrompt(command);
-                text = template.replace("${userMessage}", rest);
-            } catch (Exception e) {
-                // Ignore missing prompt
-            }
+        ModelApiDescriptor model = modelRepository.getChatModelInUse();
+        if ( model == null )
+        {
+            applyToView( view -> view.showNotification(
+                "No AI model configured. Open Window > Preferences > Assist Agent > Models to add one.",
+                Duration.ofSeconds( 10 ),
+                NotificationType.WARNING ) );
+            return;
         }
 
-        String userText = text;
-        String userMessageId = UUID.randomUUID().toString();
+        try
+        {
+            AgentSession session = sessionManagerProvider.get().getOrCreateSession();
+            session.switchModel( model );
 
-        applyToView(view -> {
-            view.clearUserInput();
-            view.appendMessage(userMessageId, "user");
-            view.setMessageHtml(userMessageId, userText);
-            view.setInputEnabled(false);
-        });
-
-        String assistantMessageId = UUID.randomUUID().toString();
-        applyToView(view -> view.appendMessage(assistantMessageId, "assistant"));
-
-        StringBuilder accumulatedResponse = new StringBuilder();
-
-        currentStream = session.sendMessage(userText, attachments)
-            .subscribeOn(Schedulers.boundedElastic())
-            .subscribe(
-                chatResponse -> {
-                    String content = chatResponse.getResult().getOutput().getText();
-                    if (content != null) {
-                        accumulatedResponse.append(content);
-                        String currentHtml = accumulatedResponse.toString();
-                        applyToView(view -> view.setMessageHtml(assistantMessageId, currentHtml));
-                    }
-                },
-                error -> {
-                    applyToView(view -> {
-                        view.setMessageHtml(assistantMessageId, "Error: " + error.getMessage());
-                        view.setInputEnabled(true);
-                    });
-                },
-                () -> {
-                    // Stream finished, update conversation history in session
-                    session.appendAssistantResponse(accumulatedResponse.toString());
-                    applyToView(view -> view.setInputEnabled(true));
+            // Handle slash commands mapping manually, similar to ChatViewPresenter
+            if ( text.startsWith( "/" ) )
+            {
+                String[] parts = text.split( " ", 2 );
+                String command = parts[0].substring( 1 );
+                String rest = parts.length > 1 ? parts[1] : "";
+                try
+                {
+                    String template = promptRepository.getPrompt( command );
+                    text = template.replace( "${userMessage}", rest );
                 }
-            );
+                catch ( Exception e )
+                {
+                    // Ignore missing prompt
+                }
+            }
+
+            String userText = text;
+            String userMessageId = UUID.randomUUID().toString();
+
+            applyToView( view -> {
+                view.clearUserInput();
+                view.appendMessage( userMessageId, "user" );
+                view.setMessageHtml( userMessageId, userText );
+                view.setInputEnabled( false );
+            } );
+
+            String assistantMessageId = UUID.randomUUID().toString();
+            applyToView( view -> view.appendMessage( assistantMessageId, "assistant" ) );
+
+            StringBuilder accumulatedResponse = new StringBuilder();
+
+            currentStream = session.sendMessage( userText, attachments )
+                .subscribeOn( Schedulers.boundedElastic() )
+                .subscribe(
+                    chatResponse -> {
+                        String content = chatResponse.getResult().getOutput().getText();
+                        if ( content != null )
+                        {
+                            accumulatedResponse.append( content );
+                            String currentHtml = accumulatedResponse.toString();
+                            applyToView( view -> view.setMessageHtml( assistantMessageId, currentHtml ) );
+                        }
+                    },
+                    error -> {
+                        logger.error( "Agent chat stream failed", error );
+                        applyToView( view -> {
+                            view.setMessageHtml( assistantMessageId, "Error: " + error.getMessage() );
+                            view.setInputEnabled( true );
+                        } );
+                    },
+                    () -> {
+                        session.appendAssistantResponse( accumulatedResponse.toString() );
+                        applyToView( view -> view.setInputEnabled( true ) );
+                    } );
+        }
+        catch ( Exception e )
+        {
+            logger.error( "Failed to send message to AI model", e );
+            applyToView( view -> {
+                view.showNotification(
+                    "Could not send message: " + e.getMessage(),
+                    Duration.ofSeconds( 10 ),
+                    NotificationType.ERROR );
+                view.setInputEnabled( true );
+            } );
+        }
     }
 
     public void onStop()
@@ -145,14 +182,14 @@ public class AgentViewPresenter implements IResourceCacheListener
 
     public void onChatModelSelected(String modelId)
     {
-        sessionManager.switchModel(modelId);
+        sessionManagerProvider.get().switchModel(modelId);
         modelRepository.setChatModelInUse(modelId);
     }
 
     public void onClear()
     {
-        sessionManager.destroySession();
-        sessionManager.newSession();
+        sessionManagerProvider.get().destroySession();
+        sessionManagerProvider.get().newSession();
         applyToView(ChatView::clearChatView);
     }
 
@@ -172,8 +209,37 @@ public class AgentViewPresenter implements IResourceCacheListener
         onSendUserMessage(message.getContent(), message.getAttachments());
     }
 
-    public void onViewVisible() {
-        // Ignored
+    @PostConstruct
+    public void init()
+    {
+        refreshViewState();
+    }
+
+    public void onViewVisible()
+    {
+        refreshViewState();
+    }
+
+    private void refreshViewState()
+    {
+        initializeAvailableModels();
+        updateAutocomplete();
+    }
+
+    private void initializeAvailableModels()
+    {
+        ModelApiDescriptor selectedModel = modelRepository.getChatModelInUse();
+        List<ModelApiDescriptor> models = modelRepository.listModelApiDescriptors();
+        String selectedId = selectedModel != null ? selectedModel.uid() : "";
+        applyToView( view -> view.setAvailableModels( models, selectedId ) );
+    }
+
+    private void updateAutocomplete()
+    {
+        Map<String, String> mappings = promptRepository.getAllPrompts()
+            .stream()
+            .collect( Collectors.toMap( Prompts::getCommandName, Prompts::getDescription ) );
+        applyToView( view -> view.setAutocompleteModel( mappings ) );
     }
 
     public void onRemoveAttachment(int index) {
@@ -223,7 +289,7 @@ public class AgentViewPresenter implements IResourceCacheListener
 
     public void onReplayLastMessage() {
         logger.info("Replaying last message with current model");
-        AgentSession session = sessionManager.getOrCreateSession();
+        AgentSession session = sessionManagerProvider.get().getOrCreateSession();
         List<ChatMessage> history = session.getHistory();
         if (history.isEmpty()) {
             return;
@@ -372,7 +438,7 @@ public class AgentViewPresenter implements IResourceCacheListener
     }
 
     public void onRemoveMessage(String messageId) {
-        AgentSession session = sessionManager.getOrCreateSession();
+        AgentSession session = sessionManagerProvider.get().getOrCreateSession();
         session.removeMessageById(messageId);
         applyToView(view -> {
             view.removeMessage(messageId);

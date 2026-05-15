@@ -25,8 +25,6 @@ import jakarta.inject.Singleton;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
-import reactor.util.context.Context;
-
 /**
  * An in-memory transport implementation that allows client and server to communicate
  * within the same JVM process. This transport is useful for testing and scenarios where
@@ -173,7 +171,6 @@ public class InMemoryTransport
                     // Process each message and ignore its result (convert to Mono<Void>)
                     return Mono.just(message)
                         .transform(handler)
-                        .contextWrite(ctx -> ctx.put("observation", "inMemoryObservation"))
                         .then();  // Convert to Mono<Void>
                 })
                 .subscribe();

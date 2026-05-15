@@ -117,6 +117,23 @@
     <category name="assistai-deps"/>
   </bundle>
 
+  <!-- Spring Framework (Spring AI runtime) -->
+  <bundle id="wrapped.org.springframework.spring-core" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="wrapped.org.springframework.spring-beans" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="wrapped.org.springframework.spring-context" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="wrapped.org.springframework.spring-web" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="wrapped.org.springframework.spring-webflux" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+
   <!-- Spring AI and providers -->
   <bundle id="wrapped.org.springframework.ai.spring-ai-model" version="0.0.0">
     <category name="assistai-deps"/>

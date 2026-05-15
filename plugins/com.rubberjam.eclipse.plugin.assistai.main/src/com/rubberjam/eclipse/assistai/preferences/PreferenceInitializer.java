@@ -48,9 +48,21 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer
         ModelApiDescriptor deepseek = new ModelApiDescriptor( "4e28814b-d7cd-42f5-bd3e-0df577a3d2c4", "deepseek", "https://api.deepseek.com/chat/completions", "", 10, 30, "deepseek-chat", 7, false, true );
         ModelApiDescriptor gemini = new ModelApiDescriptor( "15742962-271f-4ffb-80aa-58224631015a", "gemini", "https://generativelanguage.googleapis.com/v1beta", "", 10, 30, "gemini-3-flash-preview", 7, true, true );
         ModelApiDescriptor grok = new ModelApiDescriptor( "8c7a9874-02c2-4ac3-aaec-051860da3c02", "grok", "https://api.x.ai/v1/chat/completions", "", 10, 30, "grok-code-fast", ModelApiDescriptor.TEMPERATURE_NOT_SUPPORTED, true, true );
-        
-        modelApiDescriptorRepository.initializeDefaultDescriptors( gpt4, claude, groq, deepseek, gemini, grok );
-        modelApiDescriptorRepository.initializeDefaultDescriptorInUse( gpt4 );
+        ModelApiDescriptor mistral = new ModelApiDescriptor(
+                "",
+                "mistral",
+                "https://api.mistral.ai",
+                "",
+                10,
+                30,
+                "devstral-2512",
+                7,
+                false,
+                true );
+
+        modelApiDescriptorRepository.initializeDefaultDescriptors(
+                mistral, gpt4, claude, groq, deepseek, gemini, grok );
+        modelApiDescriptorRepository.initializeDefaultDescriptorInUse( mistral );
         
         var descriptors = mcpServerRepository.listBuiltInServers();
         
@@ -59,7 +71,7 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer
 
         // Initialize HTTP MCP Server defaults
         store.setDefault(PreferenceConstants.ASSISTAI_MCP_HTTP_HOSTNAME, "localhost");
-        store.setDefault(PreferenceConstants.ASSISTAI_MCP_HTTP_PORT, 8080);
+        store.setDefault(PreferenceConstants.ASSISTAI_MCP_HTTP_PORT, 9391);
         store.setDefault(PreferenceConstants.ASSISTAI_MCP_HTTP_ENABLED, false);
         // Generate auth token once and persist it — using setDefault(randomUUID) would
         // produce a new token on every Eclipse restart since defaults are not persisted.
