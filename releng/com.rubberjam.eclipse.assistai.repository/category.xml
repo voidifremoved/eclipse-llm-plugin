@@ -153,13 +153,22 @@
   <bundle id="wrapped.org.springframework.ai.spring-ai-vertex-ai-gemini" version="0.0.0">
     <category name="assistai-deps"/>
   </bundle>
+  <bundle id="wrapped.org.springframework.ai.spring-ai-google-genai" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="wrapped.com.google.genai.google-genai" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
   <bundle id="wrapped.org.springframework.ai.spring-ai-mcp" version="0.0.0">
     <category name="assistai-deps"/>
   </bundle>
   <bundle id="wrapped.org.springframework.ai.spring-ai-retry" version="0.0.0">
     <category name="assistai-deps"/>
   </bundle>
-  <bundle id="wrapped.com.anthropic.anthropic-java" version="0.0.0">
+  <bundle id="wrapped.com.anthropic.anthropic-java-core" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="wrapped.com.anthropic.anthropic-java-client-okhttp" version="0.0.0">
     <category name="assistai-deps"/>
   </bundle>
 

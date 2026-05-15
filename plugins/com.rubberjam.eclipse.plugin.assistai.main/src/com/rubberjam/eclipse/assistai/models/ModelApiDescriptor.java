@@ -48,10 +48,16 @@ public record ModelApiDescriptor(
         return Duration.ofSeconds(requestTimeoutSeconds > 0 ? requestTimeoutSeconds : 30);
     }
     
+    /**
+     * UI stores temperature on a 0–10 scale; {@link #TEMPERATURE_NOT_SUPPORTED} is -1.
+     */
     public Optional<Float> scaledTemperature()
     {
-        return temperature >= 0 ? Optional.empty() : Optional.of( Float.valueOf( (float)temperature/10.0f ) );
-        
+        if ( temperature < 0 )
+        {
+            return Optional.empty();
+        }
+        return Optional.of( temperature / 10.0f );
     }
     
 } 

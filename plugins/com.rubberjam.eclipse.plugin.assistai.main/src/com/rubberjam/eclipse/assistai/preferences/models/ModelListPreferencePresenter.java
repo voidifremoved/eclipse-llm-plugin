@@ -2,6 +2,7 @@ package com.rubberjam.eclipse.assistai.preferences.models;
 
 import org.eclipse.e4.core.di.annotations.Creatable;
 
+import com.rubberjam.eclipse.assistai.agent.ChatModelRegistry;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptorRepository;
 
@@ -16,12 +17,17 @@ public class ModelListPreferencePresenter
 
     private final ModelApiDescriptorRepository repository;
 
+    private final ChatModelRegistry chatModelRegistry;
+
     private ModelListPreferencePage view;
 
     @Inject
-    public ModelListPreferencePresenter( ModelApiDescriptorRepository repository )
+    public ModelListPreferencePresenter(
+            ModelApiDescriptorRepository repository,
+            ChatModelRegistry chatModelRegistry )
     {
         this.repository = repository;
+        this.chatModelRegistry = chatModelRegistry;
     }
 
 
@@ -37,6 +43,7 @@ public class ModelListPreferencePresenter
 	repository.findByIndex(selectedIndex)
 			  .ifPresent(
 					  selected -> {
+						  chatModelRegistry.invalidate( selected.uid() );
 						  repository.delete( selected);
 				          view.showModels( repository.listModelApiDescriptors() );
 				          view.clearModelDetails();
@@ -45,7 +52,8 @@ public class ModelListPreferencePresenter
 
     public void saveModel( int selectedIndex, ModelApiDescriptor updatedModelStub )
     {
-        repository.save( selectedIndex, updatedModelStub );
+        ModelApiDescriptor saved = repository.save( selectedIndex, updatedModelStub );
+        chatModelRegistry.invalidate( saved.uid() );
 	view.showModels( repository.listModelApiDescriptors() );
         view.clearModelDetails();
     }
@@ -65,6 +73,7 @@ public class ModelListPreferencePresenter
 
     public void onPerformDefaults()
     {
+        chatModelRegistry.invalidateAll();
         view.showModels( repository.setToDefault() );
         view.clearModelDetails();
     }
