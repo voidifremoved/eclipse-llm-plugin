@@ -6,7 +6,10 @@ import java.util.List;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor;
 
 /**
@@ -55,8 +58,39 @@ public class McpServerDescriptorUtilities {
         try {
             return objectMapper.readValue(json, new TypeReference<List<McpServerDescriptor>>() {});
         } catch (Exception e) {
-            // In case of parsing error, return empty list
-            return new ArrayList<>();
+            try {
+                return objectMapper.readValue(
+                        migrateLegacyJson( json ),
+                        new TypeReference<List<McpServerDescriptor>>() {} );
+            } catch (Exception migrationError) {
+                return new ArrayList<>();
+            }
         }
+    }
+
+    /**
+     * Ensures each stored server object has a {@code url} field so preferences saved
+     * before HTTP MCP support still deserialize after {@link McpServerDescriptor} gained {@code url}.
+     */
+    private static String migrateLegacyJson( String json ) throws JsonProcessingException
+    {
+        JsonNode root = objectMapper.readTree( json );
+        if ( !root.isArray() )
+        {
+            return "[]";
+        }
+        ArrayNode array = (ArrayNode) root;
+        for ( JsonNode node : array )
+        {
+            if ( node.isObject() )
+            {
+                ObjectNode obj = (ObjectNode) node;
+                if ( !obj.has( "url" ) )
+                {
+                    obj.put( "url", "" );
+                }
+            }
+        }
+        return objectMapper.writeValueAsString( root );
     }
 }

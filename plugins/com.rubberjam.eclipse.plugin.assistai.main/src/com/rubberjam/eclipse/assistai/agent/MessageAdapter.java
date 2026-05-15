@@ -1,125 +1,124 @@
 package com.rubberjam.eclipse.assistai.agent;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.lang.reflect.Proxy;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
 
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
-import org.springframework.ai.chat.messages.MessageType;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.model.ModelOptionsUtils;
 
-import com.rubberjam.eclipse.assistai.chat.ChatMessage;
-import com.rubberjam.eclipse.assistai.chat.FunctionCall;
 import com.rubberjam.eclipse.assistai.chat.Attachment;
 import com.rubberjam.eclipse.assistai.chat.Attachment.FileContentAttachment;
 import com.rubberjam.eclipse.assistai.chat.Attachment.ImageAttachment;
-import org.springframework.ai.model.ModelOptionsUtils;
+import com.rubberjam.eclipse.assistai.chat.ChatMessage;
+import com.rubberjam.eclipse.assistai.chat.FunctionCall;
 
 public class MessageAdapter
 {
 
-    public static Message toSpringAi(ChatMessage chatMessage)
+    public static Message toSpringAi( ChatMessage chatMessage )
     {
         String role = chatMessage.getRole();
         String content = chatMessage.getContent();
 
-        if ("user".equalsIgnoreCase(role))
+        if ( "user".equalsIgnoreCase( role ) )
         {
-            List<Attachment> attachments = chatMessage.getAttachments();
-            if (attachments != null) {
-                for (Attachment att : attachments) {
-                    if (att instanceof ImageAttachment) {
-                        ImageAttachment imgAtt = (ImageAttachment) att;
-                        // Ignoring for now
-                    } else if (att instanceof FileContentAttachment) {
-                        FileContentAttachment fileAtt = (FileContentAttachment) att;
-                        content += "\n\n" + fileAtt.toChatMessageContent();
-                    }
-                }
-            }
-            return createProxy(MessageType.USER, content);
+            content = appendAttachmentContent( chatMessage, content );
+            return new UserMessage( content );
         }
-        else if ("assistant".equalsIgnoreCase(role))
+        if ( "assistant".equalsIgnoreCase( role ) )
         {
-            return createProxy(MessageType.ASSISTANT, content);
+            return toAssistantMessage( chatMessage, content );
         }
-        else if ("system".equalsIgnoreCase(role))
+        if ( "system".equalsIgnoreCase( role ) )
         {
-            return createProxy(MessageType.SYSTEM, content);
+            return new SystemMessage( content );
         }
-
-        return createProxy(MessageType.USER, content);
+        return new UserMessage( content );
     }
 
-    private static Message createProxy(MessageType type, String content) {
-        return (Message) Proxy.newProxyInstance(
-            Message.class.getClassLoader(),
-            new Class[] { Message.class },
-            new InvocationHandler() {
-                @Override
-                public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-                    String name = method.getName();
-                    if ("getMessageType".equals(name)) return type;
-                    if ("getText".equals(name)) return content;
-                    if ("getContent".equals(name)) return content;
-                    if ("toString".equals(name)) return content;
-                    if ("hasToolCalls".equals(name)) return false;
-                    if ("getMetadata".equals(name)) return Collections.emptyMap();
-                    return null;
-                }
-            }
-        );
-    }
-
-    public static ChatMessage fromSpringAi(Message springAiMessage)
+    private static String appendAttachmentContent( ChatMessage chatMessage, String content )
     {
-        String messageType = null;
-        try {
+        List<Attachment> attachments = chatMessage.getAttachments();
+        if ( attachments == null )
+        {
+            return content;
+        }
+        StringBuilder builder = new StringBuilder( content != null ? content : "" );
+        for ( Attachment att : attachments )
+        {
+            if ( att instanceof ImageAttachment )
+            {
+                // Images are not inlined into text for Spring AI here yet
+            }
+            else if ( att instanceof FileContentAttachment fileAtt )
+            {
+                builder.append( "\n\n" ).append( fileAtt.toChatMessageContent() );
+            }
+        }
+        return builder.toString();
+    }
+
+    private static Message toAssistantMessage( ChatMessage chatMessage, String content )
+    {
+        FunctionCall functionCall = chatMessage.getFunctionCall();
+        if ( functionCall == null )
+        {
+            return new AssistantMessage( content );
+        }
+        String argsJson = functionCall.arguments() == null
+                ? "{}"
+                : ModelOptionsUtils.toJsonString( functionCall.arguments() );
+        AssistantMessage.ToolCall toolCall = new AssistantMessage.ToolCall(
+                functionCall.id(),
+                "function",
+                functionCall.name(),
+                argsJson );
+        List<AssistantMessage.ToolCall> toolCalls = new ArrayList<>();
+        toolCalls.add( toolCall );
+        return AssistantMessage.builder()
+                .content( content )
+                .toolCalls( toolCalls )
+                .build();
+    }
+
+    public static ChatMessage fromSpringAi( Message springAiMessage )
+    {
+        String messageType;
+        try
+        {
             messageType = springAiMessage.getMessageType().getValue();
-        } catch(Exception e) {
+        }
+        catch ( Exception e )
+        {
             messageType = "assistant";
         }
-        ChatMessage chatMessage = new ChatMessage(UUID.randomUUID().toString(), messageType);
+        ChatMessage chatMessage = new ChatMessage( UUID.randomUUID().toString(), messageType );
 
-        String text = null;
-        try {
-            Object obj = springAiMessage;
-            Method getText = obj.getClass().getMethod("getText");
-            text = (String) getText.invoke(obj);
-        } catch (Exception e) {
-            try {
-                Object obj = springAiMessage;
-                Method getContent = obj.getClass().getMethod("getContent");
-                text = (String) getContent.invoke(obj);
-            } catch (Exception e2) {
-                text = ""; // Avoid toString() entirely to prevent OSGi verification issues on Message supertype Content
+        String text = springAiMessage.toString();
+        chatMessage.setContent( text != null ? text : "" );
+
+        if ( springAiMessage instanceof AssistantMessage assistantMessage && assistantMessage.hasToolCalls() )
+        {
+            List<AssistantMessage.ToolCall> toolCalls = assistantMessage.getToolCalls();
+            if ( toolCalls != null && !toolCalls.isEmpty() )
+            {
+                AssistantMessage.ToolCall firstCall = toolCalls.get( 0 );
+                Map<String, Object> args = ModelOptionsUtils.jsonToMap( firstCall.arguments() );
+                FunctionCall funcCall = new FunctionCall(
+                        firstCall.id(),
+                        firstCall.name(),
+                        args,
+                        null );
+                chatMessage.setFunctionCall( funcCall );
             }
         }
 
-        try {
-            Object obj = springAiMessage;
-            Method hasToolCalls = obj.getClass().getMethod("hasToolCalls");
-            if ((Boolean)hasToolCalls.invoke(obj)) {
-                Method getToolCalls = obj.getClass().getMethod("getToolCalls");
-                List<?> toolCalls = (List<?>) getToolCalls.invoke(obj);
-                if (!toolCalls.isEmpty()) {
-                    Object firstCall = toolCalls.get(0);
-                    String id = (String) firstCall.getClass().getMethod("id").invoke(firstCall);
-                    String name = (String) firstCall.getClass().getMethod("name").invoke(firstCall);
-                    String argsStr = (String) firstCall.getClass().getMethod("arguments").invoke(firstCall);
-                    Map<String, Object> args = ModelOptionsUtils.jsonToMap(argsStr);
-                    FunctionCall funcCall = new FunctionCall(id, name, args, null);
-                    chatMessage.setFunctionCall(funcCall);
-                }
-            }
-        } catch (Exception e) {
-            // Ignore if method not found
-        }
-
-        chatMessage.setContent(text == null ? "" : text);
         return chatMessage;
     }
 }

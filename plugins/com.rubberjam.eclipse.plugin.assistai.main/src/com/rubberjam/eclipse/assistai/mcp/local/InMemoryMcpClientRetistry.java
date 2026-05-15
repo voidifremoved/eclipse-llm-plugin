@@ -24,6 +24,7 @@ import org.eclipse.e4.ui.workbench.lifecycle.PostWorkbenchClose;
 import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor;
 import com.rubberjam.eclipse.assistai.mcp.McpServerRepository;
 import com.rubberjam.eclipse.assistai.mcp.local.InMemoryClientServerFactory.InMemorySyncClientServer;
+import com.rubberjam.eclipse.assistai.mcp.remote.RemoteMcpClientFactory;
 import com.rubberjam.eclipse.assistai.tools.EclipseVariableUtilities;
 import com.google.common.base.Predicate;
 import com.google.common.base.Predicates;
@@ -173,32 +174,34 @@ public class InMemoryMcpClientRetistry
     
         for (var userMcp : userDefined)
         {
-            // Replace variables in the command string
-            String resolvedCommand = EclipseVariableUtilities.resolveEclipseVariables(userMcp.command());
-            
-            var commandParts = parseCommand(resolvedCommand);
-    
-            String executable = commandParts.get(0);
-            String[] args = commandParts.subList(1, commandParts.size()).toArray(new String[0]);
-    
-            // Also resolve variables in environment variables
             Map<String, String> resolvedEnvVars = userMcp.environmentVariables().stream()
-                    .collect(Collectors.toMap(
-                        McpServerDescriptor.EnvironmentVariable::name,
-                        ev -> EclipseVariableUtilities.resolveEclipseVariables(ev.value())
-                    ));
-    
-            ServerParameters stdioParameters = ServerParameters.builder(executable)
-                    .args(args)
-                    .env(resolvedEnvVars)
-                    .build();
-            JacksonMcpJsonMapperSupplier jsonMapperSupplier = new JacksonMcpJsonMapperSupplier();
-            
-            McpClientTransport mcpTransport = new StdioClientTransport(stdioParameters, jsonMapperSupplier.get() );
-            McpSyncClient client = McpClient.sync(mcpTransport)
-                    .jsonSchemaValidator( new JacksonJsonSchemaValidatorSupplier().get() )
-                    .build();
-            addClient(userMcp.name(), client);
+                    .collect( Collectors.toMap(
+                            McpServerDescriptor.EnvironmentVariable::name,
+                            ev -> EclipseVariableUtilities.resolveEclipseVariables( ev.value() ) ) );
+
+            McpSyncClient client;
+            if ( userMcp.isHttpServer() )
+            {
+                String resolvedUrl = EclipseVariableUtilities.resolveEclipseVariables( userMcp.url() );
+                client = RemoteMcpClientFactory.createHttpClient( resolvedUrl, resolvedEnvVars );
+            }
+            else
+            {
+                String resolvedCommand = EclipseVariableUtilities.resolveEclipseVariables( userMcp.command() );
+                var commandParts = parseCommand( resolvedCommand );
+                String executable = commandParts.get( 0 );
+                String[] args = commandParts.subList( 1, commandParts.size() ).toArray( new String[0] );
+                ServerParameters stdioParameters = ServerParameters.builder( executable )
+                        .args( args )
+                        .env( resolvedEnvVars )
+                        .build();
+                JacksonMcpJsonMapperSupplier jsonMapperSupplier = new JacksonMcpJsonMapperSupplier();
+                McpClientTransport mcpTransport = new StdioClientTransport( stdioParameters, jsonMapperSupplier.get() );
+                client = McpClient.sync( mcpTransport )
+                        .jsonSchemaValidator( new JacksonJsonSchemaValidatorSupplier().get() )
+                        .build();
+            }
+            addClient( userMcp.name(), client );
         }
     }
 

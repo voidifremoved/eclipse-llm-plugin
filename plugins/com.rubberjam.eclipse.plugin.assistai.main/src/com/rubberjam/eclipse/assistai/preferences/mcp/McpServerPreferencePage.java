@@ -19,6 +19,8 @@ import org.eclipse.jface.viewers.TableViewerColumn;
 import org.eclipse.jface.window.Window;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.SashForm;
+import org.eclipse.swt.events.FocusAdapter;
+import org.eclipse.swt.events.FocusEvent;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.graphics.Point;
@@ -61,6 +63,8 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
 
     private Text                         commandText;
 
+    private Text                         urlText;
+
     private TableViewer                  envTableViewer;
 
     private Table                        envTable;
@@ -70,6 +74,8 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     private Label                        nameLabel;
     
     private Label                        commandLabel;
+
+    private Label                        urlLabel;
 
     private Button                       addButton;
 
@@ -257,11 +263,28 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
         commandTextData.right = new FormAttachment(100, -10);
         commandText.setLayoutData(commandTextData);
 
+        // HTTP MCP URL label and field
+        urlLabel = new Label( form, SWT.NONE );
+        urlLabel.setText( "URL:" );
+        FormData urlLabelData = new FormData();
+        urlLabelData.top = new FormAttachment( commandText, 10 );
+        urlLabelData.left = new FormAttachment( 0, 10 );
+        urlLabel.setLayoutData( urlLabelData );
+
+        urlText = new Text( form, SWT.BORDER );
+        urlText.setToolTipText( "HTTP MCP server URL (streamable transport). Example: http://localhost:8125/mcp/calculator. "
+                + "Leave empty for stdio servers started via Command. Tools are discovered when you leave this field." );
+        FormData urlTextData = new FormData();
+        urlTextData.top = new FormAttachment( urlLabel, 0, SWT.CENTER );
+        urlTextData.left = new FormAttachment( 0, 150 );
+        urlTextData.right = new FormAttachment( 100, -10 );
+        urlText.setLayoutData( urlTextData );
+
         // Tools label
         toolsLabel = new Label( form, SWT.NONE );
         toolsLabel.setText( "Tools:" );
         FormData toolsLabelData = new FormData();
-        toolsLabelData.top = new FormAttachment( commandText, 15 );
+        toolsLabelData.top = new FormAttachment( urlText, 15 );
         toolsLabelData.left = new FormAttachment( 0, 10 );
         toolsLabel.setLayoutData( toolsLabelData );
 
@@ -385,6 +408,15 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
 
     private void initializeDetailsListeners()
     {
+        urlText.addFocusListener( new FocusAdapter()
+        {
+            @Override
+            public void focusLost( FocusEvent e )
+            {
+                presenter.discoverToolsFromUrl( urlText.getText().trim(), currentEnvVars );
+            }
+        } );
+
         // Tool checkbox listener
         toolTableViewer.addCheckStateListener( event -> {
             String toolName = (String) event.getElement();
@@ -426,7 +458,9 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
             int selectedIndex = envTable.getSelectionIndex();
             if ( selectedIndex >= 0 )
             {
-                presenter.removeServer( selectedIndex );
+                currentEnvVars.remove( selectedIndex );
+                envTableViewer.setInput( currentEnvVars );
+                envTableViewer.refresh();
             }
         } );
     }
@@ -472,14 +506,25 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
             return;
         }
 
-        if (commandText.getText().trim().isEmpty())
+        String url = urlText.getText().trim();
+        String command = commandText.getText().trim();
+        if ( url.isEmpty() && command.isEmpty() )
         {
-            showError("Command cannot be empty");
+            showError( "Either URL (HTTP MCP) or Command (stdio MCP) must be set" );
             return;
         }
 
+        List<String> excludedTools = collectExcludedTools();
+
         // Create updated server descriptor
-        McpServerDescriptor updatedServer = new McpServerDescriptor( "", nameText.getText(), commandText.getText(), currentEnvVars, true, false, Collections.emptyList() ); 
+        McpServerDescriptor updatedServer = new McpServerDescriptor( "",
+                nameText.getText(),
+                command,
+                currentEnvVars,
+                true,
+                false,
+                excludedTools,
+                url ); 
 
         presenter.saveServer( selectedIndex, updatedServer );
         super.performApply();
@@ -522,6 +567,7 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
         uiSync.asyncExec( () -> {
             nameText.setText( serverDescriptor.name() );
             commandText.setText( serverDescriptor.command() );
+            urlText.setText( serverDescriptor.url() != null ? serverDescriptor.url() : "" );
 
             // Update environment variables
             currentEnvVars = new ArrayList<>( serverDescriptor.environmentVariables() );
@@ -538,6 +584,7 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
         uiSync.asyncExec( () -> {
             nameText.setText( "" );
             commandText.setText( "" );
+            urlText.setText( "" );
 
             // Clear tools
             toolTableViewer.setInput( Collections.emptyList() );
@@ -560,6 +607,32 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
             }
             toolTableViewer.refresh();
         } );
+    }
+
+    public void setToolsDiscoveryInProgress( boolean inProgress )
+    {
+        uiSync.asyncExec( () -> {
+            toolTable.setEnabled( !inProgress );
+            toolsLabel.setText( inProgress ? "Tools: (discovering…)" : "Tools:" );
+        } );
+    }
+
+    private List<String> collectExcludedTools()
+    {
+        List<String> excluded = new ArrayList<>();
+        Object input = toolTableViewer.getInput();
+        if ( input instanceof List<?> tools )
+        {
+            for ( Object element : tools )
+            {
+                String toolName = (String) element;
+                if ( !toolTableViewer.getChecked( toolName ) )
+                {
+                    excluded.add( toolName );
+                }
+            }
+        }
+        return excluded;
     }
 
     /**
@@ -585,6 +658,8 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
             nameText.setEnabled(editable);
             commandLabel.setEnabled(editable);
             commandText.setEnabled(editable);
+            urlLabel.setEnabled( editable );
+            urlText.setEnabled( editable );
 
             // Tools stay enabled even for built-in servers
             toolsLabel.setEnabled( true );

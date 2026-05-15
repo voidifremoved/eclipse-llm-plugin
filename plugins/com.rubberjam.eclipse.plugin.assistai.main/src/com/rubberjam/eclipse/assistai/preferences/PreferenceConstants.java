@@ -7,6 +7,7 @@ public class PreferenceConstants
 {
     public static final String ASSISTAI_CHAT_MODEL = "AssistaAISelectedModel";
     public static final String ASSISTAI_DEFINED_MODELS = "AssistAIDefinedModels";
+    public static final String ASSISTAI_AGENT_TABS = "AssistAIAgentTabs";
     
     // MCP Server preferences
     public static final String ASSISTAI_DEFINED_MCP_SERVERS = "AssistAIDefinedMCPServers";

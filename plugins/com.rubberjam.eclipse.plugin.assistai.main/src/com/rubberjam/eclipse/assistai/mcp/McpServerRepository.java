@@ -1,5 +1,6 @@
 package com.rubberjam.eclipse.assistai.mcp;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -47,7 +48,81 @@ public class McpServerRepository
     public List<McpServerDescriptor> listStoredServers()
     {
         String serversJson = getPreferenceStore().getString( PreferenceConstants.ASSISTAI_DEFINED_MCP_SERVERS );
-        return McpServerDescriptorUtilities.fromJson( serversJson );
+        List<McpServerDescriptor> stored = McpServerDescriptorUtilities.fromJson( serversJson );
+        return mergeWithBuiltins( stored );
+    }
+
+    /**
+     * Always includes built-in AssistAI MCP servers, overlaying stored enable/tool preferences when present.
+     */
+    private List<McpServerDescriptor> mergeWithBuiltins( List<McpServerDescriptor> stored )
+    {
+        List<McpServerDescriptor> builtins = mcpBuiltins.listBuiltInImplementations();
+        List<McpServerDescriptor> merged = new ArrayList<>();
+
+        for ( McpServerDescriptor builtin : builtins )
+        {
+            McpServerDescriptor fromStore = findStoredServer( stored, builtin );
+            if ( fromStore != null )
+            {
+                merged.add( asBuiltIn( fromStore ) );
+            }
+            else
+            {
+                merged.add( builtin );
+            }
+        }
+
+        for ( McpServerDescriptor server : stored )
+        {
+            if ( !server.builtIn() && findBuiltinByUidOrName( builtins, server ) == null )
+            {
+                merged.add( server );
+            }
+        }
+
+        return merged;
+    }
+
+    private static McpServerDescriptor findStoredServer( List<McpServerDescriptor> stored, McpServerDescriptor builtin )
+    {
+        for ( McpServerDescriptor server : stored )
+        {
+            if ( builtin.uid().equals( server.uid() ) || builtin.name().equals( server.name() ) )
+            {
+                return server;
+            }
+        }
+        return null;
+    }
+
+    private static McpServerDescriptor findBuiltinByUidOrName( List<McpServerDescriptor> builtins, McpServerDescriptor server )
+    {
+        for ( McpServerDescriptor builtin : builtins )
+        {
+            if ( builtin.uid().equals( server.uid() ) || builtin.name().equals( server.name() ) )
+            {
+                return builtin;
+            }
+        }
+        return null;
+    }
+
+    private static McpServerDescriptor asBuiltIn( McpServerDescriptor descriptor )
+    {
+        if ( descriptor.builtIn() )
+        {
+            return descriptor;
+        }
+        return new McpServerDescriptor(
+                descriptor.uid(),
+                descriptor.name(),
+                descriptor.command(),
+                descriptor.environmentVariables(),
+                descriptor.enabled(),
+                true,
+                descriptor.excludedTools(),
+                descriptor.url() );
     }
 
     public List<McpServerDescriptor> listBuiltInServers()

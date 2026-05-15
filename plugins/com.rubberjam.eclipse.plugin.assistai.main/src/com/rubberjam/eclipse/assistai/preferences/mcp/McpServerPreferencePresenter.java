@@ -1,7 +1,10 @@
 package com.rubberjam.eclipse.assistai.preferences.mcp;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,11 +18,15 @@ import org.eclipse.core.runtime.ILog;
 import org.eclipse.e4.core.di.annotations.Creatable;
 
 import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor;
+import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor.EnvironmentVariable;
 import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor.McpServerDescriptorWithStatus;
 import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor.Status;
 import com.rubberjam.eclipse.assistai.mcp.http.HttpMcpServerRegistry;
 import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRetistry;
 import com.rubberjam.eclipse.assistai.mcp.McpServerRepository;
+import com.rubberjam.eclipse.assistai.mcp.remote.RemoteMcpClientFactory;
+
+import io.modelcontextprotocol.spec.McpSchema;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -33,12 +40,16 @@ public class McpServerPreferencePresenter
 {
 
     private static final int MCP_SERVER_PING_TIMEOUT_SECONDS = 1;
+    private static final int MCP_TOOL_DISCOVERY_TIMEOUT_SECONDS = 20;
+
     private final InMemoryMcpClientRetistry clientRetistry;
     private final HttpMcpServerRegistry httpMcpServerRegistry;
     private final McpServerRepository mcpServerRepository;
     private final ILog logger;
     
     private McpServerPreferencePage view;
+
+    private String lastDiscoveredUrl = "";
 
     @Inject
     public McpServerPreferencePresenter( InMemoryMcpClientRetistry mcpClientRetistry,
@@ -107,9 +118,45 @@ public class McpServerPreferencePresenter
      */
     public void addServer()
     {
+        lastDiscoveredUrl = "";
         view.clearServerSelection();
         view.clearServerDetails();
         view.setDetailsEditable( true );
+    }
+
+    /**
+     * Contacts an HTTP MCP endpoint and populates the tools list (called when the URL field loses focus).
+     */
+    public void discoverToolsFromUrl( String url, List<EnvironmentVariable> environmentVariables )
+    {
+        if ( url == null || url.isBlank() )
+        {
+            return;
+        }
+        String trimmedUrl = url.trim();
+        if ( trimmedUrl.equals( lastDiscoveredUrl ) )
+        {
+            return;
+        }
+
+        view.setToolsDiscoveryInProgress( true );
+        Map<String, String> headers = toHeaderMap( environmentVariables );
+
+        CompletableFuture.supplyAsync( () -> RemoteMcpClientFactory.discoverToolNames( trimmedUrl, headers ) )
+                .orTimeout( MCP_TOOL_DISCOVERY_TIMEOUT_SECONDS, TimeUnit.SECONDS )
+                .whenComplete( ( toolNames, error ) -> {
+                    view.setToolsDiscoveryInProgress( false );
+                    if ( error != null )
+                    {
+                        lastDiscoveredUrl = "";
+                        String message = error.getCause() != null ? error.getCause().getMessage() : error.getMessage();
+                        view.showError( "Failed to discover tools at " + trimmedUrl + ": " + message );
+                        view.showToolList( Collections.emptyList(), Collections.emptyList() );
+                        return;
+                    }
+                    lastDiscoveredUrl = trimmedUrl;
+                    view.showToolList( toolNames, Collections.emptyList() );
+                } );
     }
 
     /**
@@ -128,11 +175,12 @@ public class McpServerPreferencePresenter
             McpServerDescriptor server = servers.get( serverIndex );
             McpServerDescriptor updated = new McpServerDescriptor( server.uid(), 
                                                                    server.name(), 
-                                                                   server.command(), 
+                                                                   server.command(),
                                                                    server.environmentVariables(), 
                                                                    enabled, 
                                                                    server.builtIn(),
-                                                                   server.excludedTools() );
+                                                                   server.excludedTools(),
+                                                                   server.url() );
             servers.set( serverIndex, updated );
             mcpServerRepository.save( servers );
             restartServers();
@@ -209,7 +257,8 @@ public class McpServerPreferencePresenter
                                                                updatedServerStub.environmentVariables(), 
                                                                updatedServerStub.enabled(), 
                                                                false,
-                                                               updatedServerStub.excludedTools() );
+                                                               updatedServerStub.excludedTools(),
+                                                               updatedServerStub.url() );
 
         update.accept( toStore );
         mcpServerRepository.save( storedDescriptors );
@@ -230,17 +279,50 @@ public class McpServerPreferencePresenter
         if ( selectedIndex >= 0 && selectedIndex < servers.size() )
         {
             var selected = servers.get( selectedIndex );
+            lastDiscoveredUrl = selected.url() != null ? selected.url().trim() : "";
             view.showServerDetails( selected );
             view.setDetailsEditable( !selected.builtIn() );
             view.setRemoveEditable( !selected.builtIn() );
-            var allTools = mcpServerRepository.listToolsForServer( selected.name() );
+            List<String> allTools = listToolsForDescriptor( selected );
             view.showToolList( allTools, selected.excludedTools() );
         }
         else
         {
+            lastDiscoveredUrl = "";
             view.clearServerDetails();
             view.setDetailsEditable( false );
         }
+    }
+
+    private List<String> listToolsForDescriptor( McpServerDescriptor descriptor )
+    {
+        if ( descriptor.builtIn() )
+        {
+            return mcpServerRepository.listToolsForServer( descriptor.name() );
+        }
+        Optional<io.modelcontextprotocol.client.McpSyncClient> client = clientRetistry.findClient( descriptor.name() );
+        if ( client.isPresent() )
+        {
+            try
+            {
+                McpSchema.ListToolsResult result = client.get().listTools();
+                if ( result != null && result.tools() != null )
+                {
+                    List<String> names = new ArrayList<>();
+                    for ( McpSchema.Tool tool : result.tools() )
+                    {
+                        names.add( tool.name() );
+                    }
+                    Collections.sort( names );
+                    return names;
+                }
+            }
+            catch ( Exception e )
+            {
+                logger.error( "Failed to list tools for MCP server " + descriptor.name() + ": " + e.getMessage() );
+            }
+        }
+        return Collections.emptyList();
     }
 
     public void toggleToolEnabled( int serverIndex, String toolName, boolean enabled )
@@ -263,7 +345,7 @@ public class McpServerPreferencePresenter
             }
             McpServerDescriptor updated = new McpServerDescriptor( server.uid(),
                     server.name(), server.command(), server.environmentVariables(),
-                    server.enabled(), server.builtIn(), excludedTools );
+                    server.enabled(), server.builtIn(), excludedTools, server.url() );
             servers.set( serverIndex, updated );
             mcpServerRepository.save( servers );
             restartServers();
@@ -299,5 +381,22 @@ public class McpServerPreferencePresenter
         view.showServers( getServersWithStatus() );
         view.clearServerDetails();
         view.setDetailsEditable( false );
+    }
+
+    private static Map<String, String> toHeaderMap( List<EnvironmentVariable> environmentVariables )
+    {
+        Map<String, String> headers = new HashMap<>();
+        if ( environmentVariables == null )
+        {
+            return headers;
+        }
+        for ( EnvironmentVariable variable : environmentVariables )
+        {
+            if ( variable.name() != null && !variable.name().isBlank() )
+            {
+                headers.put( variable.name(), variable.value() != null ? variable.value() : "" );
+            }
+        }
+        return headers;
     }
 }

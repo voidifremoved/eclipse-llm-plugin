@@ -14,19 +14,21 @@ import org.apache.commons.lang3.StringUtils;
 import org.eclipse.core.runtime.ILog;
 import org.eclipse.e4.core.di.annotations.Creatable;
 import org.eclipse.e4.core.di.annotations.Optional;
+import org.eclipse.e4.ui.css.swt.theme.IThemeEngine;
 import org.eclipse.e4.ui.di.Focus;
 import org.eclipse.e4.ui.di.UIEventTopic;
 import org.eclipse.e4.ui.di.UISynchronize;
-import org.eclipse.e4.ui.css.swt.theme.IThemeEngine;
 import org.eclipse.jface.fieldassist.ContentProposalAdapter;
 import org.eclipse.jface.fieldassist.IContentProposal;
 import org.eclipse.jface.fieldassist.IContentProposalProvider;
 import org.eclipse.jface.fieldassist.TextContentAdapter;
-import org.eclipse.jface.resource.JFaceResources;
-import org.eclipse.jface.resource.LocalResourceManager;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.browser.Browser;
 import org.eclipse.swt.browser.BrowserFunction;
+import org.eclipse.swt.custom.CTabFolder;
+import org.eclipse.swt.custom.CTabFolder2Adapter;
+import org.eclipse.swt.custom.CTabFolderEvent;
+import org.eclipse.swt.custom.CTabItem;
 import org.eclipse.swt.custom.SashForm;
 import org.eclipse.swt.custom.ScrolledComposite;
 import org.eclipse.swt.dnd.Clipboard;
@@ -45,7 +47,6 @@ import org.eclipse.swt.events.VerifyListener;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.GC;
 import org.eclipse.swt.graphics.Image;
-import com.rubberjam.eclipse.assistai.agent.AgentViewPresenter;
 import org.eclipse.swt.graphics.ImageData;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.Rectangle;
@@ -64,8 +65,10 @@ import org.eclipse.swt.widgets.ToolItem;
 import org.eclipse.ui.ISharedImages;
 import org.eclipse.ui.PlatformUI;
 
+import com.rubberjam.eclipse.assistai.agent.AgentViewPresenter;
 import com.rubberjam.eclipse.assistai.chat.Attachment;
 import com.rubberjam.eclipse.assistai.chat.Attachment.UiVisitor;
+import com.rubberjam.eclipse.assistai.chat.ChatMessage;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 import com.rubberjam.eclipse.assistai.prompt.MarkdownParser;
 import com.rubberjam.eclipse.assistai.tools.AssistaiSharedFiles;
@@ -104,6 +107,10 @@ public class ChatView
     @Inject
     @Optional
     private IThemeEngine themeEngine;
+
+    private CTabFolder           agentTabFolder;
+
+    private final Map<String, CTabItem> agentTabItems = new LinkedHashMap<>();
 
     private Browser              browser;
     
@@ -161,7 +168,43 @@ public class ChatView
     @PostConstruct
     public void createControls( Composite parent )
     {
-        SashForm sashForm = new SashForm( parent, SWT.VERTICAL );
+        Composite root = new Composite( parent, SWT.NONE );
+        root.setLayout( new GridLayout( 1, false ) );
+        root.setLayoutData( new GridData( SWT.FILL, SWT.FILL, true, true ) );
+
+        agentTabFolder = new CTabFolder( root, SWT.TOP | SWT.FLAT );
+        agentTabFolder.setLayoutData( new GridData( SWT.FILL, SWT.CENTER, true, false ) );
+        agentTabFolder.setBorderVisible( false );
+        agentTabFolder.setSimple( false );
+        agentTabFolder.addSelectionListener( new SelectionAdapter()
+        {
+            @Override
+            public void widgetSelected( SelectionEvent e )
+            {
+                CTabItem item = agentTabFolder.getSelection();
+                if ( item != null && item.getData() instanceof String tabId )
+                {
+                    presenter.onTabSelected( tabId );
+                }
+            }
+        } );
+        agentTabFolder.addCTabFolder2Listener( new CTabFolder2Adapter()
+        {
+            @Override
+            public void close( CTabFolderEvent event )
+            {
+                if ( event.item.getData() instanceof String tabId )
+                {
+                    presenter.onCloseAgentTab( tabId );
+                    event.doit = false;
+                }
+            }
+        } );
+        ToolBar tabToolBar = new ToolBar( agentTabFolder, SWT.FLAT );
+        createNewAgentTabToolItem( tabToolBar );
+        agentTabFolder.setTopRight( tabToolBar, SWT.RIGHT );
+
+        SashForm sashForm = new SashForm( root, SWT.VERTICAL );
         sashForm.setLayoutData( new GridData( SWT.FILL, SWT.FILL, true, true ) );
 
         Composite browserContainer = new Composite( sashForm, SWT.NONE );
@@ -227,7 +270,109 @@ public class ChatView
 
         clearAttachments();
 
+        presenter.registerChatView( this );
+        presenter.onChatViewCreated();
         presenter.onViewVisible();
+    }
+
+    public void addAgentTab( String tabId, String title )
+    {
+        if ( agentTabFolder == null || agentTabFolder.isDisposed() || agentTabItems.containsKey( tabId ) )
+        {
+            return;
+        }
+        CTabItem item = new CTabItem( agentTabFolder, SWT.CLOSE );
+        item.setText( title );
+        item.setData( tabId );
+        agentTabItems.put( tabId, item );
+        agentTabFolder.setSelection( item );
+    }
+
+    public void removeAgentTab( String tabId )
+    {
+        CTabItem item = agentTabItems.remove( tabId );
+        if ( item != null && !item.isDisposed() )
+        {
+            item.dispose();
+        }
+    }
+
+    public void selectAgentTab( String tabId )
+    {
+        CTabItem item = agentTabItems.get( tabId );
+        if ( item != null && !item.isDisposed() )
+        {
+            agentTabFolder.setSelection( item );
+        }
+    }
+
+    public void setAgentTabTitle( String tabId, String title )
+    {
+        CTabItem item = agentTabItems.get( tabId );
+        if ( item != null && !item.isDisposed() )
+        {
+            item.setText( title );
+        }
+    }
+
+    public boolean hasAgentTab( String tabId )
+    {
+        return agentTabItems.containsKey( tabId );
+    }
+
+    public void renderConversationHistory( List<ChatMessage> messages )
+    {
+        uiSync.asyncExec( () -> {
+            if ( browser == null || browser.isDisposed() )
+            {
+                return;
+            }
+            initializeChatView( browser );
+            if ( messages == null )
+            {
+                return;
+            }
+            for ( ChatMessage message : messages )
+            {
+                if ( message == null || "system".equals( message.getRole() ) )
+                {
+                    continue;
+                }
+                appendMessageInBrowser( message.getId(), message.getRole() );
+                if ( message.getContent() != null && !message.getContent().isBlank() )
+                {
+                    setMessageHtmlInBrowser( message.getId(), message.getContent() );
+                }
+            }
+            if ( autoScrollEnabled )
+            {
+                browser.execute( "window.scrollTo(0, document.body.scrollHeight);" );
+            }
+        } );
+    }
+
+    private ToolItem createNewAgentTabToolItem( ToolBar toolbar )
+    {
+        ToolItem item = new ToolItem( toolbar, SWT.PUSH );
+        try
+        {
+            Image newIcon = PlatformUI.getWorkbench().getSharedImages().getImage( ISharedImages.IMG_OBJ_ADD );
+            item.setImage( newIcon );
+        }
+        catch ( Exception e )
+        {
+            logger.error( e.getMessage(), e );
+        }
+        item.setToolTipText( "New agent tab" );
+        item.addSelectionListener( new SelectionAdapter()
+        {
+            @Override
+            public void widgetSelected( SelectionEvent e )
+            {
+                presenter.onNewAgentTab();
+            }
+        } );
+        return item;
     }
 
     public void setupAutocomplete(Text textField) {
@@ -770,18 +915,22 @@ public class ChatView
 
     public void setMessageHtml( String messageId, String messageBody )
     {
-        uiSync.asyncExec( () -> {
-            MarkdownParser parser = new MarkdownParser( messageBody );
+        uiSync.asyncExec( () -> setMessageHtmlInBrowser( messageId, messageBody ) );
+    }
 
-            String fixedHtml = escapeHtmlQuotes( fixLineBreaks( parser.parseToHtml() ) );
-            // inject and highlight html message
-            browser.execute( "var target = document.getElementById(\"message-content-" + messageId + "\") || document.getElementById(\"message-" + messageId + "\"); if (target) { target.innerHTML = '" + fixedHtml + "'; } renderCode();" );
-            // Scroll down only if auto-scroll is enabled
-            if ( autoScrollEnabled )
-            {
-                browser.execute( "window.scrollTo(0, document.body.scrollHeight);" );
-            }
-        } );
+    private void setMessageHtmlInBrowser( String messageId, String messageBody )
+    {
+        if ( browser == null || browser.isDisposed() )
+        {
+            return;
+        }
+        MarkdownParser parser = new MarkdownParser( messageBody );
+        String fixedHtml = escapeHtmlQuotes( fixLineBreaks( parser.parseToHtml() ) );
+        browser.execute( "var target = document.getElementById(\"message-content-" + messageId + "\") || document.getElementById(\"message-" + messageId + "\"); if (target) { target.innerHTML = '" + fixedHtml + "'; } renderCode();" );
+        if ( autoScrollEnabled )
+        {
+            browser.execute( "window.scrollTo(0, document.body.scrollHeight);" );
+        }
     }
 
     /**
@@ -812,10 +961,29 @@ public class ChatView
 
     public void appendMessage( String messageId, String role )
     {
-        //
-        String cssClass = "user".equals( role ) ? "chat-bubble me" : "chat-bubble you";
-        uiSync.asyncExec( () -> {
-            browser.execute( """
+        uiSync.asyncExec( () -> appendMessageInBrowser( messageId, role ) );
+    }
+
+    private void appendMessageInBrowser( String messageId, String role )
+    {
+        if ( browser == null || browser.isDisposed() )
+        {
+            return;
+        }
+        String cssClass;
+        if ( "user".equals( role ) )
+        {
+            cssClass = "chat-bubble me";
+        }
+        else if ( "tool".equals( role ) )
+        {
+            cssClass = "chat-bubble you tool-call-bubble";
+        }
+        else
+        {
+            cssClass = "chat-bubble you";
+        }
+        browser.execute( """
                     var node = document.createElement("div");
                     node.setAttribute("id", "message-${id}");
                     node.setAttribute("class", "${cssClass}");
@@ -837,12 +1005,76 @@ public class ChatView
                     
                     document.getElementById("content").appendChild(node);
                     	""".replace( "${id}", messageId ).replace( "${cssClass}", cssClass ) );
-            // Scroll down only if auto-scroll is enabled
-            if ( autoScrollEnabled )
-            {
-                browser.execute( "window.scrollTo(0, document.body.scrollHeight);" );
-            }
+        if ( autoScrollEnabled )
+        {
+            browser.execute( "window.scrollTo(0, document.body.scrollHeight);" );
+        }
+    }
+
+    public void appendToolCallMessage( String messageId, String toolName, String status, String details )
+    {
+        uiSync.asyncExec( () -> {
+            appendMessageInBrowser( messageId, "tool" );
+            setToolCallMessageHtmlInBrowser( messageId, toolName, status, details );
         } );
+    }
+
+    public void updateToolCallMessage( String messageId, String toolName, String status, String details )
+    {
+        uiSync.asyncExec( () -> setToolCallMessageHtmlInBrowser( messageId, toolName, status, details ) );
+    }
+
+    public void moveMessageToEnd( String messageId )
+    {
+        uiSync.asyncExec( () -> {
+            if ( browser == null || browser.isDisposed() )
+            {
+                return;
+            }
+            browser.execute( """
+                    var node = document.getElementById("message-${id}");
+                    var content = document.getElementById("content");
+                    if (node && content) {
+                        content.appendChild(node);
+                    }
+                    """.replace( "${id}", messageId ) );
+        } );
+    }
+
+    private void setToolCallMessageHtmlInBrowser( String messageId, String toolName, String status, String details )
+    {
+        if ( browser == null || browser.isDisposed() )
+        {
+            return;
+        }
+        String escapedToolName = escapeHtmlQuotes( escapeHtml( safeText( toolName ) ) );
+        String escapedStatus = escapeHtmlQuotes( escapeHtml( safeText( status ) ) );
+        String escapedDetails = escapeHtmlQuotes( fixLineBreaks( escapeHtml( safeText( details ) ) ) );
+        String html = """
+                <div class="tool-call-title">
+                    <span class="tool-call-name">${toolName}</span>
+                    <span class="tool-call-status">${status}</span>
+                </div>
+                <details class="tool-call-details">
+                    <summary>Tool details</summary>
+                    <pre><code>${details}</code></pre>
+                </details>
+                """.replace( "${toolName}", escapedToolName )
+                   .replace( "${status}", escapedStatus )
+                   .replace( "${details}", escapedDetails );
+        browser.execute( "var target = document.getElementById(\"message-content-" + messageId + "\") || document.getElementById(\"message-" + messageId + "\"); if (target) { target.innerHTML = '" + html + "'; }" );
+    }
+
+    private String safeText( String text )
+    {
+        return text != null ? text : "";
+    }
+
+    private String escapeHtml( String text )
+    {
+        return text.replace( "&", "&amp;" )
+                   .replace( "<", "&lt;" )
+                   .replace( ">", "&gt;" );
     }
 
 	

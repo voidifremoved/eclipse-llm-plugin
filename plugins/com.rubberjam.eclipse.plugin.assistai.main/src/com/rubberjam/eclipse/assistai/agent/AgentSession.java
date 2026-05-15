@@ -24,6 +24,7 @@ public class AgentSession
     private final ChatModelRegistry modelRegistry;
     private final List<org.springframework.ai.chat.messages.Message> conversationHistory;
     private final String systemPrompt;
+    private ToolCallEventListener toolCallEventListener = ToolCallEventListener.noop();
 
     public AgentSession(ChatModelRegistry modelRegistry, McpToolBridge toolBridge, String systemPrompt)
     {
@@ -42,8 +43,22 @@ public class AgentSession
         ChatModel chatModel = modelRegistry.getModel(model.uid());
         this.chatClient = ChatClient.builder(chatModel)
                 .defaultSystem(systemPrompt)
-                .defaultToolCallbacks(toolBridge.getToolCallbacks())
+                .defaultToolCallbacks(toolBridge.getToolCallbacks( toolCallEventListener ))
                 .build();
+    }
+
+    public void setToolCallEventListener( ToolCallEventListener listener )
+    {
+        this.toolCallEventListener = listener != null ? listener : ToolCallEventListener.noop();
+        if ( currentModel != null )
+        {
+            initialize( currentModel );
+        }
+    }
+
+    public String getCurrentModelUid()
+    {
+        return currentModel != null ? currentModel.uid() : null;
     }
 
     public Flux<ChatResponse> sendMessage(String text, List<Attachment> attachments)
@@ -61,10 +76,16 @@ public class AgentSession
         org.springframework.ai.chat.messages.Message userMessage = MessageAdapter.toSpringAi(userChatMsg);
         conversationHistory.add(userMessage);
 
-        return chatClient.prompt()
-                .messages(conversationHistory)
-                .stream()
-                .chatResponse();
+        /*
+         * Spring AI 2.0.0-M4 can mis-handle streaming tool-call loops with MCP
+         * results, interpreting the tool result payload as a later tool name.
+         * Keep the Flux contract for the presenter, but use the non-streaming path
+         * so tool execution stays inside one stable ChatClient call.
+         */
+        return Flux.defer( () -> Flux.just( chatClient.prompt()
+                .messages( conversationHistory )
+                .call()
+                .chatResponse() ) );
     }
 
     public void appendAssistantResponse(org.springframework.ai.chat.messages.Message assistantMessage) {
@@ -90,6 +111,44 @@ public class AgentSession
         conversationHistory.add(new org.springframework.ai.chat.messages.SystemMessage(systemPrompt));
     }
 
+    public void restoreMessages( List<AgentMessageSnapshot> messages )
+    {
+        conversationHistory.clear();
+        conversationHistory.add( new org.springframework.ai.chat.messages.SystemMessage( systemPrompt ) );
+        if ( messages == null )
+        {
+            return;
+        }
+        for ( AgentMessageSnapshot message : messages )
+        {
+            if ( message == null || "system".equals( message.role() ) )
+            {
+                continue;
+            }
+            ChatMessage chatMessage = new ChatMessage( message.id(), message.role() );
+            chatMessage.setContent( message.content() != null ? message.content() : "" );
+            conversationHistory.add( MessageAdapter.toSpringAi( chatMessage ) );
+        }
+    }
+
+    public List<AgentMessageSnapshot> snapshotMessages()
+    {
+        List<AgentMessageSnapshot> messages = new ArrayList<>();
+        for ( org.springframework.ai.chat.messages.Message message : conversationHistory )
+        {
+            ChatMessage chatMessage = MessageAdapter.fromSpringAi( message );
+            if ( "system".equals( chatMessage.getRole() ) )
+            {
+                continue;
+            }
+            messages.add( new AgentMessageSnapshot(
+                    chatMessage.getId(),
+                    chatMessage.getRole(),
+                    chatMessage.getContent() ) );
+        }
+        return messages;
+    }
+
     public void removeLastMessage() {
         if (!conversationHistory.isEmpty()) {
             conversationHistory.remove(conversationHistory.size() - 1);
@@ -108,5 +167,10 @@ public class AgentSession
         return conversationHistory.stream()
             .map(MessageAdapter::fromSpringAi)
             .collect(Collectors.toList());
+    }
+
+    public String getSessionId()
+    {
+        return sessionId;
     }
 }

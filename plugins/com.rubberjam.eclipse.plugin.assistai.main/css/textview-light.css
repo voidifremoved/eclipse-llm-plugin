@@ -43,6 +43,37 @@ li {
   background-color: #ffffff;
 }
 
+.chat-bubble.tool-call-bubble {
+  background-color: #eef5ff;
+  border-left: 3px solid #2563eb;
+  color: #1e3a8a;
+}
+
+.tool-call-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.tool-call-name {
+  font-weight: 600;
+}
+
+.tool-call-status {
+  color: #2563eb;
+  font-size: 12px;
+}
+
+.tool-call-details {
+  margin-top: 6px;
+}
+
+.tool-call-details pre {
+  margin-top: 6px;
+  max-height: 220px;
+}
+
 /* Ensure inline elements stay inline */
 .chat-bubble i, .chat-bubble em, .chat-bubble b, .chat-bubble strong, .chat-bubble span, .chat-bubble a {
   display: inline;

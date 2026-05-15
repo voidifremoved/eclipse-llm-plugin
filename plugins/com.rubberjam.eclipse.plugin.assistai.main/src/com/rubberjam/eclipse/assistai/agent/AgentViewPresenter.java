@@ -3,6 +3,7 @@ package com.rubberjam.eclipse.assistai.agent;
 import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -64,12 +65,14 @@ public class AgentViewPresenter implements IResourceCacheListener
     @Inject private ApplyPatchWizardHelper applyPatchWizardHelper;
     @Inject private UISynchronize uiSync;
 
-    // We use Object to avoid OSGi visibility errors for reactor.core.Disposable
-    private Object currentStream;
+    private final Map<String, AgentTabState> tabStates = new HashMap<>();
+
+    private ChatView registeredView;
+
+    private boolean suppressTabSelection;
 
     private final IPreferenceStore preferences = Activator.getDefault().getPreferenceStore();
     private static final String LAST_SELECTED_DIR_KEY = "lastSelectedDirectory";
-    private final List<Attachment> attachments = new ArrayList<>();
 
     public void onSendUserMessage(String text)
     {
@@ -78,20 +81,35 @@ public class AgentViewPresenter implements IResourceCacheListener
 
     public void onSendUserMessage(String text, List<Attachment> attachments)
     {
-        ModelApiDescriptor model = modelRepository.getChatModelInUse();
-        if ( model == null )
-        {
-            applyToView( view -> view.showNotification(
-                "No AI model configured. Open Window > Preferences > Assist Agent > Models to add one.",
-                Duration.ofSeconds( 10 ),
-                NotificationType.WARNING ) );
-            return;
-        }
-
         try
         {
-            AgentSession session = sessionManagerProvider.get().getOrCreateSession();
+            AgentSessionManager sessionManager = sessionManagerProvider.get();
+            String tabId = sessionManager.getActiveTabId();
+            if ( tabId == null )
+            {
+                tabId = sessionManager.createTab();
+                ensureTabInView( tabId, sessionManager.getTabTitle( tabId ) );
+            }
+
+            ModelApiDescriptor model = sessionManager.getSelectedModel( tabId );
+            if ( model == null )
+            {
+                applyToView( view -> view.showNotification(
+                    "No AI model configured. Open Window > Preferences > Assist Agent > Models to add one.",
+                    Duration.ofSeconds( 10 ),
+                    NotificationType.WARNING ) );
+                return;
+            }
+
+            AgentSession session = sessionManager.getSession( tabId );
+            final String activeTabId = tabId;
+            session.setToolCallEventListener( event -> onToolCallEvent( activeTabId, event ) );
             session.switchModel( model );
+
+            AgentTabState tabState = getTabState( tabId );
+            List<Attachment> tabAttachments = attachments != null
+                    ? new ArrayList<>( attachments )
+                    : new ArrayList<>( tabState.attachments );
 
             // Handle slash commands mapping manually, similar to ChatViewPresenter
             if ( text.startsWith( "/" ) )
@@ -112,6 +130,7 @@ public class AgentViewPresenter implements IResourceCacheListener
 
             String userText = text;
             String userMessageId = UUID.randomUUID().toString();
+            updateTabTitle( tabId, userText );
 
             applyToView( view -> {
                 view.clearUserInput();
@@ -121,33 +140,50 @@ public class AgentViewPresenter implements IResourceCacheListener
             } );
 
             String assistantMessageId = UUID.randomUUID().toString();
+            tabState.pendingAssistantMessageId = assistantMessageId;
+            tabState.pendingAssistantHtml.setLength( 0 );
+            tabState.generating = true;
+
             applyToView( view -> view.appendMessage( assistantMessageId, "assistant" ) );
 
-            StringBuilder accumulatedResponse = new StringBuilder();
-
-            currentStream = session.sendMessage( userText, attachments )
+            tabState.currentStream = session.sendMessage( userText, tabAttachments )
                 .subscribeOn( Schedulers.boundedElastic() )
                 .subscribe(
                     chatResponse -> {
                         String content = chatResponse.getResult().getOutput().getText();
                         if ( content != null )
                         {
-                            accumulatedResponse.append( content );
-                            String currentHtml = accumulatedResponse.toString();
-                            applyToView( view -> view.setMessageHtml( assistantMessageId, currentHtml ) );
+                            tabState.pendingAssistantHtml.append( content );
+                            if ( activeTabId.equals( sessionManager.getActiveTabId() ) )
+                            {
+                                String currentHtml = tabState.pendingAssistantHtml.toString();
+                                applyToView( view -> view.setMessageHtml( assistantMessageId, currentHtml ) );
+                            }
                         }
                     },
                     error -> {
                         logger.error( "Agent chat stream failed", error );
-                        applyToView( view -> {
-                            view.setMessageHtml( assistantMessageId, "Error: " + error.getMessage() );
-                            view.setInputEnabled( true );
-                        } );
+                        tabState.generating = false;
+                        tabState.pendingAssistantMessageId = null;
+                        if ( activeTabId.equals( sessionManager.getActiveTabId() ) )
+                        {
+                            applyToView( view -> {
+                                view.setMessageHtml( assistantMessageId, "Error: " + error.getMessage() );
+                                view.setInputEnabled( true );
+                            } );
+                        }
                     },
                     () -> {
-                        session.appendAssistantResponse( accumulatedResponse.toString() );
-                        applyToView( view -> view.setInputEnabled( true ) );
+                        session.appendAssistantResponse( tabState.pendingAssistantHtml.toString() );
+                        tabState.generating = false;
+                        tabState.pendingAssistantMessageId = null;
+                        sessionManager.persistTabs();
+                        if ( activeTabId.equals( sessionManager.getActiveTabId() ) )
+                        {
+                            applyToView( view -> view.setInputEnabled( true ) );
+                        }
                     } );
+            tabState.attachments.clear();
         }
         catch ( Exception e )
         {
@@ -164,33 +200,153 @@ public class AgentViewPresenter implements IResourceCacheListener
 
     public void onStop()
     {
-        if (currentStream != null)
+        String tabId = sessionManagerProvider.get().getActiveTabId();
+        if ( tabId != null )
         {
-            try {
-                java.lang.reflect.Method isDisposedMethod = currentStream.getClass().getMethod("isDisposed");
-                boolean isDisposed = (Boolean) isDisposedMethod.invoke(currentStream);
-                if (!isDisposed) {
-                    java.lang.reflect.Method disposeMethod = currentStream.getClass().getMethod("dispose");
-                    disposeMethod.invoke(currentStream);
-                }
-            } catch (Exception e) {
-                // Ignore
-            }
+            disposeStream( getTabState( tabId ) );
+            getTabState( tabId ).generating = false;
         }
-        applyToView(view -> view.setInputEnabled(true));
+        applyToView( view -> view.setInputEnabled( true ) );
     }
 
     public void onChatModelSelected(String modelId)
     {
-        sessionManagerProvider.get().switchModel(modelId);
-        modelRepository.setChatModelInUse(modelId);
+        AgentSessionManager sessionManager = sessionManagerProvider.get();
+        String tabId = sessionManager.getActiveTabId();
+        if ( tabId != null )
+        {
+            sessionManager.switchModel( tabId, modelId );
+        }
+        initializeAvailableModels();
     }
 
     public void onClear()
     {
-        sessionManagerProvider.get().destroySession();
-        sessionManagerProvider.get().newSession();
-        applyToView(ChatView::clearChatView);
+        AgentSessionManager sessionManager = sessionManagerProvider.get();
+        String tabId = sessionManager.getActiveTabId();
+        if ( tabId == null )
+        {
+            return;
+        }
+        AgentTabState tabState = getTabState( tabId );
+        disposeStream( tabState );
+        tabState.generating = false;
+        tabState.pendingAssistantMessageId = null;
+        tabState.pendingAssistantHtml.setLength( 0 );
+        tabState.attachments.clear();
+        sessionManager.newSession();
+        applyToView( view -> {
+            view.renderConversationHistory( sessionManager.getSession( tabId ).getHistory() );
+            view.setAttachments( tabState.attachments );
+            view.setInputEnabled( true );
+        } );
+    }
+
+    public void registerChatView( ChatView view )
+    {
+        registeredView = view;
+    }
+
+    public void onChatViewCreated()
+    {
+        AgentSessionManager sessionManager = sessionManagerProvider.get();
+        if ( !sessionManager.hasTabs() )
+        {
+            String tabId = sessionManager.createTab();
+            getTabState( tabId );
+            applyToView( v -> {
+                v.addAgentTab( tabId, sessionManager.getTabTitle( tabId ) );
+                v.selectAgentTab( tabId );
+                v.renderConversationHistory( sessionManager.getSession( tabId ).getHistory() );
+            } );
+            return;
+        }
+        for ( String tabId : sessionManager.getTabIds() )
+        {
+            getTabState( tabId );
+            applyToView( v -> v.addAgentTab( tabId, sessionManager.getTabTitle( tabId ) ) );
+        }
+        String activeId = sessionManager.getActiveTabId();
+        if ( activeId != null )
+        {
+            onTabSelected( activeId );
+        }
+        initializeAvailableModels();
+    }
+
+    public void onNewAgentTab()
+    {
+        AgentSessionManager sessionManager = sessionManagerProvider.get();
+        String tabId = sessionManager.createTab();
+        AgentTabState tabState = getTabState( tabId );
+        tabState.attachments.clear();
+        applyToView( v -> {
+            v.addAgentTab( tabId, sessionManager.getTabTitle( tabId ) );
+            suppressTabSelection = true;
+            v.selectAgentTab( tabId );
+            suppressTabSelection = false;
+            v.renderConversationHistory( sessionManager.getSession( tabId ).getHistory() );
+            v.clearUserInput();
+            v.setAttachments( tabState.attachments );
+            v.setInputEnabled( true );
+        } );
+        initializeAvailableModels();
+    }
+
+    public void onCloseAgentTab( String tabId )
+    {
+        if ( tabId == null )
+        {
+            return;
+        }
+        AgentSessionManager sessionManager = sessionManagerProvider.get();
+        if ( !sessionManager.getTabIds().contains( tabId ) )
+        {
+            return;
+        }
+        disposeStream( tabStates.remove( tabId ) );
+        sessionManager.closeTab( tabId );
+        applyToView( v -> v.removeAgentTab( tabId ) );
+        if ( !sessionManager.hasTabs() )
+        {
+            onNewAgentTab();
+            return;
+        }
+        String activeId = sessionManager.getActiveTabId();
+        if ( activeId != null )
+        {
+            onTabSelected( activeId );
+        }
+    }
+
+    public void onTabSelected( String tabId )
+    {
+        if ( suppressTabSelection || tabId == null )
+        {
+            return;
+        }
+        AgentSessionManager sessionManager = sessionManagerProvider.get();
+        if ( sessionManager.getSession( tabId ) == null )
+        {
+            return;
+        }
+        sessionManager.setActiveTab( tabId );
+        AgentTabState tabState = getTabState( tabId );
+        AgentSession session = sessionManager.getSession( tabId );
+        applyToView( v -> {
+            suppressTabSelection = true;
+            v.selectAgentTab( tabId );
+            suppressTabSelection = false;
+            v.renderConversationHistory( session.getHistory() );
+            if ( tabState.generating && tabState.pendingAssistantMessageId != null )
+            {
+                v.appendMessage( tabState.pendingAssistantMessageId, "assistant" );
+                v.setMessageHtml( tabState.pendingAssistantMessageId, tabState.pendingAssistantHtml.toString() );
+            }
+            v.setAttachments( new ArrayList<>( tabState.attachments ) );
+            v.setInputEnabled( !tabState.generating );
+        } );
+        initializeAvailableModels();
     }
 
     @Override
@@ -198,11 +354,108 @@ public class AgentViewPresenter implements IResourceCacheListener
         // Ignored for now
     }
 
-    private void applyToView(java.util.function.Consumer<ChatView> action)
+    private void applyToView( java.util.function.Consumer<ChatView> action )
     {
-        partAccessor.findMessageView().ifPresent(view -> {
-            Display.getDefault().asyncExec(() -> action.accept(view));
-        });
+        ChatView view = registeredView;
+        if ( view != null )
+        {
+            uiSync.asyncExec( () -> action.accept( view ) );
+            return;
+        }
+        partAccessor.findMessageView().ifPresent( v -> uiSync.asyncExec( () -> action.accept( v ) ) );
+    }
+
+    private AgentTabState getTabState( String tabId )
+    {
+        return tabStates.computeIfAbsent( tabId, id -> new AgentTabState() );
+    }
+
+    private void ensureTabInView( String tabId, String title )
+    {
+        applyToView( v -> {
+            if ( !v.hasAgentTab( tabId ) )
+            {
+                v.addAgentTab( tabId, title );
+            }
+        } );
+    }
+
+    private void updateTabTitle( String tabId, String userText )
+    {
+        String title = userText.strip();
+        if ( title.length() > 28 )
+        {
+            title = title.substring( 0, 28 ) + "...";
+        }
+        sessionManagerProvider.get().setTabTitle( tabId, title );
+        String finalTitle = title;
+        applyToView( v -> v.setAgentTabTitle( tabId, finalTitle ) );
+    }
+
+    private void disposeStream( AgentTabState tabState )
+    {
+        if ( tabState == null || tabState.currentStream == null )
+        {
+            return;
+        }
+        try
+        {
+            Object stream = tabState.currentStream;
+            java.lang.reflect.Method isDisposedMethod = stream.getClass().getMethod( "isDisposed" );
+            boolean isDisposed = (Boolean) isDisposedMethod.invoke( stream );
+            if ( !isDisposed )
+            {
+                java.lang.reflect.Method disposeMethod = stream.getClass().getMethod( "dispose" );
+                disposeMethod.invoke( stream );
+            }
+        }
+        catch ( Exception e )
+        {
+            // Ignore
+        }
+        tabState.currentStream = null;
+    }
+
+    private void onToolCallEvent( String tabId, ToolCallEvent event )
+    {
+        AgentSessionManager sessionManager = sessionManagerProvider.get();
+        AgentTabState tabState = getTabState( tabId );
+        if ( event.status() == ToolCallStatus.STARTED )
+        {
+            String messageId = UUID.randomUUID().toString();
+            tabState.toolMessageIds.put( event.id(), messageId );
+            if ( tabId.equals( sessionManager.getActiveTabId() ) )
+            {
+                applyToView( view -> {
+                    view.appendToolCallMessage(
+                            messageId,
+                            event.toolName(),
+                            "Running",
+                            event.input() );
+                    if ( tabState.pendingAssistantMessageId != null )
+                    {
+                        view.moveMessageToEnd( tabState.pendingAssistantMessageId );
+                    }
+                } );
+            }
+            return;
+        }
+
+        String messageId = tabState.toolMessageIds.get( event.id() );
+        if ( messageId == null )
+        {
+            return;
+        }
+        if ( tabId.equals( sessionManager.getActiveTabId() ) )
+        {
+            String status = event.status() == ToolCallStatus.FINISHED ? "Finished" : "Failed";
+            String details = event.output() != null ? event.output() : "";
+            applyToView( view -> view.updateToolCallMessage(
+                    messageId,
+                    event.toolName(),
+                    status,
+                    details ) );
+        }
     }
 
     public void onSendPredefinedPrompt(com.rubberjam.eclipse.assistai.prompt.Prompts type, ChatMessage message) {
@@ -228,7 +481,11 @@ public class AgentViewPresenter implements IResourceCacheListener
 
     private void initializeAvailableModels()
     {
-        ModelApiDescriptor selectedModel = modelRepository.getChatModelInUse();
+        AgentSessionManager sessionManager = sessionManagerProvider.get();
+        String tabId = sessionManager.getActiveTabId();
+        ModelApiDescriptor selectedModel = tabId != null
+                ? sessionManager.getSelectedModel( tabId )
+                : modelRepository.getChatModelInUse();
         List<ModelApiDescriptor> models = modelRepository.listModelApiDescriptors();
         String selectedId = selectedModel != null ? selectedModel.uid() : "";
         applyToView( view -> view.setAvailableModels( models, selectedId ) );
@@ -242,12 +499,18 @@ public class AgentViewPresenter implements IResourceCacheListener
         applyToView( view -> view.setAutocompleteModel( mappings ) );
     }
 
-    public void onRemoveAttachment(int index) {
-        if (index >= 0 && index < attachments.size()) {
-            attachments.remove(index);
-            applyToView(view -> {
-                view.setAttachments(attachments);
-            });
+    public void onRemoveAttachment( int index )
+    {
+        String tabId = sessionManagerProvider.get().getActiveTabId();
+        if ( tabId == null )
+        {
+            return;
+        }
+        AgentTabState tabState = getTabState( tabId );
+        if ( index >= 0 && index < tabState.attachments.size() )
+        {
+            tabState.attachments.remove( index );
+            applyToView( view -> view.setAttachments( tabState.attachments ) );
         }
     }
 
@@ -277,11 +540,18 @@ public class AgentViewPresenter implements IResourceCacheListener
                 preferences.putValue(LAST_SELECTED_DIR_KEY, newLastSelectedDirectory);
 
                 ImageData[] imageDataArray = new ImageLoader().load(selectedFilePath);
-                if (imageDataArray.length > 0) {
-                    attachments.add(new Attachment.ImageAttachment(imageDataArray[0], createPreview(imageDataArray[0])));
-                    applyToView(messageView -> {
-                        messageView.setAttachments(attachments);
-                    });
+                if ( imageDataArray.length > 0 )
+                {
+                    String tabId = sessionManagerProvider.get().getActiveTabId();
+                    if ( tabId == null )
+                    {
+                        tabId = sessionManagerProvider.get().createTab();
+                        ensureTabInView( tabId, "New Agent" );
+                    }
+                    AgentTabState tabState = getTabState( tabId );
+                    tabState.attachments.add( new Attachment.ImageAttachment(
+                            imageDataArray[0], createPreview( imageDataArray[0] ) ) );
+                    applyToView( messageView -> messageView.setAttachments( tabState.attachments ) );
                 }
             }
         });
@@ -289,7 +559,7 @@ public class AgentViewPresenter implements IResourceCacheListener
 
     public void onReplayLastMessage() {
         logger.info("Replaying last message with current model");
-        AgentSession session = sessionManagerProvider.get().getOrCreateSession();
+        AgentSession session = sessionManagerProvider.get().getActiveSession();
         List<ChatMessage> history = session.getHistory();
         if (history.isEmpty()) {
             return;
@@ -316,18 +586,30 @@ public class AgentViewPresenter implements IResourceCacheListener
         }
     }
 
-    public void onAttachmentAdded(ImageData imageData) {
-        attachments.add(new Attachment.ImageAttachment(imageData, createPreview(imageData)));
-        applyToView(messageView -> {
-            messageView.setAttachments(attachments);
-        });
+    public void onAttachmentAdded( ImageData imageData )
+    {
+        String tabId = sessionManagerProvider.get().getActiveTabId();
+        if ( tabId == null )
+        {
+            tabId = sessionManagerProvider.get().createTab();
+            ensureTabInView( tabId, "New Agent" );
+        }
+        AgentTabState tabState = getTabState( tabId );
+        tabState.attachments.add( new Attachment.ImageAttachment( imageData, createPreview( imageData ) ) );
+        applyToView( messageView -> messageView.setAttachments( tabState.attachments ) );
     }
 
-    public void onAttachmentAdded(FileContentAttachment attachment) {
-        attachments.add(attachment);
-        applyToView(messageView -> {
-            messageView.setAttachments(attachments);
-        });
+    public void onAttachmentAdded( FileContentAttachment attachment )
+    {
+        String tabId = sessionManagerProvider.get().getActiveTabId();
+        if ( tabId == null )
+        {
+            tabId = sessionManagerProvider.get().createTab();
+            ensureTabInView( tabId, "New Agent" );
+        }
+        AgentTabState tabState = getTabState( tabId );
+        tabState.attachments.add( attachment );
+        applyToView( messageView -> messageView.setAttachments( tabState.attachments ) );
     }
 
     public void onCopyCode(String codeBlock) {
@@ -437,11 +719,10 @@ public class AgentViewPresenter implements IResourceCacheListener
         });
     }
 
-    public void onRemoveMessage(String messageId) {
-        AgentSession session = sessionManagerProvider.get().getOrCreateSession();
-        session.removeMessageById(messageId);
-        applyToView(view -> {
-            view.removeMessage(messageId);
-        });
+    public void onRemoveMessage( String messageId )
+    {
+        AgentSession session = sessionManagerProvider.get().getActiveSession();
+        session.removeMessageById( messageId );
+        applyToView( view -> view.removeMessage( messageId ) );
     }
 }

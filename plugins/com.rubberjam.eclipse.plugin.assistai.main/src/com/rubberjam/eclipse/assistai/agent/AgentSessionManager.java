@@ -1,9 +1,23 @@
 package com.rubberjam.eclipse.assistai.agent;
 
-import org.eclipse.e4.core.di.annotations.Creatable;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
+import org.eclipse.e4.core.di.annotations.Creatable;
+import org.eclipse.jface.preference.IPreferenceStore;
+import org.eclipse.jface.preference.IPersistentPreferenceStore;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rubberjam.eclipse.assistai.Activator;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptorRepository;
+import com.rubberjam.eclipse.assistai.preferences.PreferenceConstants;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Provider;
@@ -13,50 +27,310 @@ import jakarta.inject.Singleton;
 @Singleton
 public class AgentSessionManager
 {
-    @Inject private ChatModelRegistry modelRegistry;
-    @Inject private Provider<McpToolBridge> toolBridgeProvider;
-    @Inject private ModelApiDescriptorRepository modelRepository;
-    @Inject private AgentSystemPromptBuilder promptBuilder;
+    @Inject
+    private ChatModelRegistry modelRegistry;
 
-    private AgentSession currentSession;
+    @Inject
+    private Provider<McpToolBridge> toolBridgeProvider;
+
+    @Inject
+    private ModelApiDescriptorRepository modelRepository;
+
+    @Inject
+    private AgentSystemPromptBuilder promptBuilder;
+
+    private final Map<String, AgentSession> sessions = new LinkedHashMap<>();
+
+    private final Map<String, String> tabTitles = new LinkedHashMap<>();
+
+    private final Map<String, String> tabModelUids = new LinkedHashMap<>();
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private String activeTabId;
+
     private McpToolBridge toolBridge;
 
+    private boolean loaded;
+
+    public String createTab()
+    {
+        ensureLoaded();
+        String tabId = UUID.randomUUID().toString();
+        String modelUid = getDefaultModelUid();
+        sessions.put( tabId, newSessionInternal( modelUid, Collections.emptyList() ) );
+        tabTitles.put( tabId, "New Agent" );
+        tabModelUids.put( tabId, modelUid );
+        activeTabId = tabId;
+        persistTabs();
+        return tabId;
+    }
+
+    public List<String> getTabIds()
+    {
+        ensureLoaded();
+        return new ArrayList<>( sessions.keySet() );
+    }
+
+    public String getActiveTabId()
+    {
+        ensureLoaded();
+        return activeTabId;
+    }
+
+    public void setActiveTab( String tabId )
+    {
+        ensureLoaded();
+        if ( sessions.containsKey( tabId ) )
+        {
+            activeTabId = tabId;
+            persistTabs();
+        }
+    }
+
+    public AgentSession getSession( String tabId )
+    {
+        ensureLoaded();
+        return sessions.get( tabId );
+    }
+
+    public AgentSession getActiveSession()
+    {
+        ensureLoaded();
+        if ( activeTabId == null || !sessions.containsKey( activeTabId ) )
+        {
+            createTab();
+        }
+        return sessions.get( activeTabId );
+    }
+
+    /** @deprecated use {@link #getActiveSession()} */
     public AgentSession getOrCreateSession()
     {
-        if (currentSession == null)
+        return getActiveSession();
+    }
+
+    public void closeTab( String tabId )
+    {
+        ensureLoaded();
+        sessions.remove( tabId );
+        tabTitles.remove( tabId );
+        tabModelUids.remove( tabId );
+        if ( tabId.equals( activeTabId ) )
         {
-            currentSession = newSession();
+            activeTabId = sessions.isEmpty() ? null : sessions.keySet().iterator().next();
         }
-        return currentSession;
+        persistTabs();
+    }
+
+    public boolean hasTabs()
+    {
+        ensureLoaded();
+        return !sessions.isEmpty();
+    }
+
+    public String getTabTitle( String tabId )
+    {
+        ensureLoaded();
+        return tabTitles.getOrDefault( tabId, "New Agent" );
+    }
+
+    public void setTabTitle( String tabId, String title )
+    {
+        ensureLoaded();
+        if ( title != null && !title.isBlank() )
+        {
+            tabTitles.put( tabId, title );
+            persistTabs();
+        }
     }
 
     public AgentSession newSession()
     {
-        String systemPrompt = promptBuilder.buildSystemPrompt();
-        currentSession = new AgentSession(modelRegistry, getToolBridge(), systemPrompt);
-
-        ModelApiDescriptor currentModel = modelRepository.getChatModelInUse();
-        if (currentModel != null) {
-            currentSession.initialize(currentModel);
+        ensureLoaded();
+        if ( activeTabId == null )
+        {
+            createTab();
         }
-        return currentSession;
+        else
+        {
+            String modelUid = tabModelUids.getOrDefault( activeTabId, getDefaultModelUid() );
+            sessions.put( activeTabId, newSessionInternal( modelUid, Collections.emptyList() ) );
+            persistTabs();
+        }
+        return sessions.get( activeTabId );
     }
 
-    public void switchModel(String modelUid)
+    public void switchModel( String modelUid )
     {
-        ModelApiDescriptor model = modelRepository.findById(modelUid)
-            .orElseThrow(() -> new IllegalArgumentException("Model not found: " + modelUid));
+        ensureLoaded();
+        if ( activeTabId != null )
+        {
+            switchModel( activeTabId, modelUid );
+        }
+    }
 
-        if (currentSession != null) {
-            currentSession.switchModel(model);
+    public void switchModel( String tabId, String modelUid )
+    {
+        ensureLoaded();
+        ModelApiDescriptor model = modelRepository.findById( modelUid )
+            .orElseThrow( () -> new IllegalArgumentException( "Model not found: " + modelUid ) );
+
+        AgentSession session = sessions.get( tabId );
+        if ( session != null )
+        {
+            session.switchModel( model );
+            tabModelUids.put( tabId, model.uid() );
+            persistTabs();
+        }
+    }
+
+    public ModelApiDescriptor getSelectedModel( String tabId )
+    {
+        ensureLoaded();
+        String modelUid = tabModelUids.get( tabId );
+        if ( modelUid != null )
+        {
+            return modelRepository.findById( modelUid ).orElse( modelRepository.getChatModelInUse() );
+        }
+        return modelRepository.getChatModelInUse();
+    }
+
+    public String getSelectedModelUid( String tabId )
+    {
+        ensureLoaded();
+        String modelUid = tabModelUids.get( tabId );
+        return modelUid != null ? modelUid : getDefaultModelUid();
+    }
+
+    public void persistTabs()
+    {
+        List<AgentTabDescriptor> descriptors = new ArrayList<>();
+        for ( String tabId : sessions.keySet() )
+        {
+            AgentSession session = sessions.get( tabId );
+            List<AgentMessageSnapshot> messages = session != null
+                    ? session.snapshotMessages()
+                    : Collections.emptyList();
+            descriptors.add( new AgentTabDescriptor(
+                    tabId,
+                    tabTitles.getOrDefault( tabId, "New Agent" ),
+                    tabModelUids.getOrDefault( tabId, getDefaultModelUid() ),
+                    tabId.equals( activeTabId ),
+                    messages ) );
+        }
+        try
+        {
+            getPreferenceStore().setValue(
+                    PreferenceConstants.ASSISTAI_AGENT_TABS,
+                    objectMapper.writeValueAsString( descriptors ) );
+            savePreferenceStore();
+        }
+        catch ( JsonProcessingException e )
+        {
+            // Keep the current in-memory tabs if persistence fails.
         }
     }
 
     public void destroySession()
     {
-        if (currentSession != null) {
-            currentSession.clear();
-            currentSession = null;
+        ensureLoaded();
+        if ( activeTabId != null )
+        {
+            AgentSession session = sessions.get( activeTabId );
+            if ( session != null )
+            {
+                session.clear();
+            }
+        }
+        persistTabs();
+    }
+
+    private AgentSession newSessionInternal( String modelUid, List<AgentMessageSnapshot> messages )
+    {
+        String systemPrompt = promptBuilder.buildSystemPrompt();
+        AgentSession session = new AgentSession( modelRegistry, getToolBridge(), systemPrompt );
+
+        ModelApiDescriptor currentModel = modelUid != null
+                ? modelRepository.findById( modelUid ).orElse( modelRepository.getChatModelInUse() )
+                : modelRepository.getChatModelInUse();
+        if ( currentModel != null )
+        {
+            session.initialize( currentModel );
+        }
+        session.restoreMessages( messages );
+        return session;
+    }
+
+    private void ensureLoaded()
+    {
+        if ( loaded )
+        {
+            return;
+        }
+        loaded = true;
+        String json = getPreferenceStore().getString( PreferenceConstants.ASSISTAI_AGENT_TABS );
+        if ( json == null || json.isBlank() )
+        {
+            return;
+        }
+        try
+        {
+            List<AgentTabDescriptor> descriptors = objectMapper.readValue(
+                    json,
+                    new TypeReference<List<AgentTabDescriptor>>() {} );
+            for ( AgentTabDescriptor descriptor : descriptors )
+            {
+                if ( descriptor == null || descriptor.tabId() == null || descriptor.tabId().isBlank() )
+                {
+                    continue;
+                }
+                sessions.put( descriptor.tabId(), newSessionInternal( descriptor.modelUid(), descriptor.messages() ) );
+                tabTitles.put( descriptor.tabId(), descriptor.title() != null ? descriptor.title() : "New Agent" );
+                tabModelUids.put( descriptor.tabId(), descriptor.modelUid() != null ? descriptor.modelUid() : getDefaultModelUid() );
+                if ( descriptor.active() )
+                {
+                    activeTabId = descriptor.tabId();
+                }
+            }
+            if ( activeTabId == null && !sessions.isEmpty() )
+            {
+                activeTabId = sessions.keySet().iterator().next();
+            }
+        }
+        catch ( Exception e )
+        {
+            sessions.clear();
+            tabTitles.clear();
+            tabModelUids.clear();
+            activeTabId = null;
+        }
+    }
+
+    private String getDefaultModelUid()
+    {
+        ModelApiDescriptor model = modelRepository.getChatModelInUse();
+        return model != null ? model.uid() : null;
+    }
+
+    private IPreferenceStore getPreferenceStore()
+    {
+        return Activator.getDefault().getPreferenceStore();
+    }
+
+    private void savePreferenceStore()
+    {
+        IPreferenceStore store = getPreferenceStore();
+        if ( store instanceof IPersistentPreferenceStore persistentStore )
+        {
+            try
+            {
+                persistentStore.save();
+            }
+            catch ( java.io.IOException e )
+            {
+                // Eclipse also persists preferences on shutdown; keep the in-memory tabs.
+            }
         }
     }
 

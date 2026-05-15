@@ -52,11 +52,12 @@ class McpServerBuiltins
         String serverName = clazz.getAnnotation( McpServer.class ).name();
         return new McpServerDescriptor( serverName, 
                 serverName, 
-                "", 
+                "",
                 Collections.emptyList(),
                 true, 
                 true,
-                Collections.emptyList() );
+                Collections.emptyList(),
+                "" );
     }
 
     public Class<?> findImplementation( String name )
