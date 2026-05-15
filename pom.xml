@@ -4,17 +4,17 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>com.github.gradusnikov.eclipse</groupId>
+  <groupId>com.rubberjam.eclipse</groupId>
   <artifactId>assistai-parent</artifactId>
   <version>1.0.7-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <modules>
-    <module>releng/com.github.gradusnikov.eclipse.assistai.target</module>
-    <module>plugins/com.github.gradusnikov.eclipse.plugin.assistai.main</module>
-    <module>features/com.github.gradusnikov.eclipse.feature.assistai</module>
-    <module>tests/com.github.gradusnikov.eclipse.plugin.assistai.main.tests</module>
-    <module>releng/com.github.gradusnikov.eclipse.assistai.repository</module>
+    <module>releng/com.rubberjam.eclipse.assistai.target</module>
+    <module>plugins/com.rubberjam.eclipse.plugin.assistai.main</module>
+    <module>features/com.rubberjam.eclipse.feature.assistai</module>
+    <module>tests/com.rubberjam.eclipse.plugin.assistai.main.tests</module>
+    <module>releng/com.rubberjam.eclipse.assistai.repository</module>
   </modules>
 
   <properties>
@@ -42,8 +42,8 @@
         <configuration>
           <target>
             <artifact>
-              <groupId>com.github.gradusnikov.eclipse</groupId>
-              <artifactId>com.github.gradusnikov.eclipse.assistai.target</artifactId>
+              <groupId>com.rubberjam.eclipse</groupId>
+              <artifactId>com.rubberjam.eclipse.assistai.target</artifactId>
               <version>1.0.7-SNAPSHOT</version>
             </artifact>
           </target>
