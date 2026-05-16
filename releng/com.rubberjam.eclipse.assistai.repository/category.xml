@@ -98,6 +98,9 @@
   </bundle>
 
   <!-- Miscellaneous transitive dependencies -->
+  <bundle id="wrapped.io.micrometer.context-propagation" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
   <bundle id="com.networknt.json-schema-validator" version="0.0.0">
     <category name="assistai-deps"/>
   </bundle>
