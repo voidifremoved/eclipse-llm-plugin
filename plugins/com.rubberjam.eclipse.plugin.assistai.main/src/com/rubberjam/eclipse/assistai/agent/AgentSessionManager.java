@@ -45,6 +45,8 @@ public class AgentSessionManager
 
     private final Map<String, String> tabModelUids = new LinkedHashMap<>();
 
+    private final Map<String, String> tabDraftTexts = new LinkedHashMap<>();
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private String activeTabId;
@@ -61,6 +63,7 @@ public class AgentSessionManager
         sessions.put( tabId, newSessionInternal( modelUid, Collections.emptyList() ) );
         tabTitles.put( tabId, "New Agent" );
         tabModelUids.put( tabId, modelUid );
+        tabDraftTexts.put( tabId, "" );
         activeTabId = tabId;
         persistTabs();
         return tabId;
@@ -116,6 +119,7 @@ public class AgentSessionManager
         sessions.remove( tabId );
         tabTitles.remove( tabId );
         tabModelUids.remove( tabId );
+        tabDraftTexts.remove( tabId );
         if ( tabId.equals( activeTabId ) )
         {
             activeTabId = sessions.isEmpty() ? null : sessions.keySet().iterator().next();
@@ -203,6 +207,29 @@ public class AgentSessionManager
         return modelUid != null ? modelUid : getDefaultModelUid();
     }
 
+    public String getTabDraftText( String tabId )
+    {
+        ensureLoaded();
+        return tabDraftTexts.getOrDefault( tabId, "" );
+    }
+
+    public void setTabDraftText( String tabId, String draftText )
+    {
+        ensureLoaded();
+        if ( tabId == null || !sessions.containsKey( tabId ) )
+        {
+            return;
+        }
+        String normalized = draftText != null ? draftText : "";
+        String current = tabDraftTexts.get( tabId );
+        if ( normalized.equals( current ) )
+        {
+            return;
+        }
+        tabDraftTexts.put( tabId, normalized );
+        persistTabs();
+    }
+
     public void persistTabs()
     {
         List<AgentTabDescriptor> descriptors = new ArrayList<>();
@@ -216,6 +243,7 @@ public class AgentSessionManager
                     tabId,
                     tabTitles.getOrDefault( tabId, "New Agent" ),
                     tabModelUids.getOrDefault( tabId, getDefaultModelUid() ),
+                    tabDraftTexts.getOrDefault( tabId, "" ),
                     tabId.equals( activeTabId ),
                     messages ) );
         }
@@ -269,9 +297,12 @@ public class AgentSessionManager
             return;
         }
         loaded = true;
+        boolean repaired = false;
         String json = getPreferenceStore().getString( PreferenceConstants.ASSISTAI_AGENT_TABS );
         if ( json == null || json.isBlank() )
         {
+            createDefaultTabInternal();
+            persistTabs();
             return;
         }
         try
@@ -288,6 +319,7 @@ public class AgentSessionManager
                 sessions.put( descriptor.tabId(), newSessionInternal( descriptor.modelUid(), descriptor.messages() ) );
                 tabTitles.put( descriptor.tabId(), descriptor.title() != null ? descriptor.title() : "New Agent" );
                 tabModelUids.put( descriptor.tabId(), descriptor.modelUid() != null ? descriptor.modelUid() : getDefaultModelUid() );
+                tabDraftTexts.put( descriptor.tabId(), descriptor.draftText() != null ? descriptor.draftText() : "" );
                 if ( descriptor.active() )
                 {
                     activeTabId = descriptor.tabId();
@@ -296,6 +328,7 @@ public class AgentSessionManager
             if ( activeTabId == null && !sessions.isEmpty() )
             {
                 activeTabId = sessions.keySet().iterator().next();
+                repaired = true;
             }
         }
         catch ( Exception e )
@@ -303,8 +336,35 @@ public class AgentSessionManager
             sessions.clear();
             tabTitles.clear();
             tabModelUids.clear();
+            tabDraftTexts.clear();
             activeTabId = null;
+            repaired = true;
         }
+        if ( sessions.isEmpty() )
+        {
+            createDefaultTabInternal();
+            repaired = true;
+        }
+        if ( activeTabId == null || !sessions.containsKey( activeTabId ) )
+        {
+            activeTabId = sessions.keySet().iterator().next();
+            repaired = true;
+        }
+        if ( repaired )
+        {
+            persistTabs();
+        }
+    }
+
+    private void createDefaultTabInternal()
+    {
+        String tabId = UUID.randomUUID().toString();
+        String modelUid = getDefaultModelUid();
+        sessions.put( tabId, newSessionInternal( modelUid, Collections.emptyList() ) );
+        tabTitles.put( tabId, "New Agent" );
+        tabModelUids.put( tabId, modelUid );
+        tabDraftTexts.put( tabId, "" );
+        activeTabId = tabId;
     }
 
     private String getDefaultModelUid()

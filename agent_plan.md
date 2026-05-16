@@ -96,7 +96,7 @@ If Spring AI tool callback APIs make wrapping awkward, start with a minimal tool
    - serialize/deserialize tab descriptors using Jackson.
    - recover gracefully on malformed JSON.
    - ensure at least one tab exists after load.
-   - Status: started in `AgentSessionManager`.
+   - Status: done. `AgentSessionManager` now self-heals invalid/empty persisted tab state and always creates a default tab.
 
 4. Extend `AgentSession`:
    - expose current model uid.

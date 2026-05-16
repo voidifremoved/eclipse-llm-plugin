@@ -7,6 +7,7 @@ public record AgentTabDescriptor(
         String tabId,
         String title,
         String modelUid,
+        String draftText,
         boolean active,
         List<AgentMessageSnapshot> messages )
 {
@@ -15,6 +16,10 @@ public record AgentTabDescriptor(
         if ( messages == null )
         {
             messages = new ArrayList<>();
+        }
+        if ( draftText == null )
+        {
+            draftText = "";
         }
     }
 }

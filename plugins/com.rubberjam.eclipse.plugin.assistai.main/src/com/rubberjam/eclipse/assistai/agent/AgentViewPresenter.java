@@ -133,8 +133,10 @@ public class AgentViewPresenter implements IResourceCacheListener
             updateTabTitle( tabId, userText );
 
             cacheMessage( tabState, userMessageId, "user", userText );
+            String finalTabId = tabId;
             applyToView( view -> {
                 tabState.draftText = "";
+                sessionManager.setTabDraftText( finalTabId, "" );
                 view.clearUserInput();
                 view.appendMessage( userMessageId, "user" );
                 view.setMessageHtml( userMessageId, userText );
@@ -323,6 +325,7 @@ public class AgentViewPresenter implements IResourceCacheListener
         sessionManager.newSession();
         applyToView( view -> {
             tabState.draftText = "";
+            sessionManager.setTabDraftText( tabId, "" );
             view.clearRenderedTabHistory( tabId );
             view.renderConversationHistory( tabId, getRenderableHistory( tabId, sessionManager.getSession( tabId ) ) );
             view.setUserInputText( tabState.draftText );
@@ -353,7 +356,8 @@ public class AgentViewPresenter implements IResourceCacheListener
         }
         for ( String tabId : sessionManager.getTabIds() )
         {
-            getTabState( tabId );
+            AgentTabState tabState = getTabState( tabId );
+            tabState.draftText = sessionManager.getTabDraftText( tabId );
             applyToView( v -> v.addAgentTab( tabId, sessionManager.getTabTitle( tabId ) ) );
         }
         String activeId = sessionManager.getActiveTabId();
@@ -389,7 +393,9 @@ public class AgentViewPresenter implements IResourceCacheListener
         {
             return;
         }
-        getTabState( tabId ).draftText = draftText != null ? draftText : "";
+        String normalized = draftText != null ? draftText : "";
+        getTabState( tabId ).draftText = normalized;
+        sessionManagerProvider.get().setTabDraftText( tabId, normalized );
     }
 
     public void onCloseAgentTab( String tabId )
@@ -431,6 +437,7 @@ public class AgentViewPresenter implements IResourceCacheListener
         }
         sessionManager.setActiveTab( tabId );
         AgentTabState tabState = getTabState( tabId );
+        tabState.draftText = sessionManager.getTabDraftText( tabId );
         AgentSession session = sessionManager.getSession( tabId );
         List<ChatMessage> renderHistory = getRenderableHistory( tabId, session );
         debugTab( "[AgentTabs] onTabSelected tabId=" + tabId

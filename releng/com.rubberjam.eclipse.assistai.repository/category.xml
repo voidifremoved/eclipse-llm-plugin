@@ -30,6 +30,17 @@
     <category name="assistai-deps"/>
   </bundle>
 
+  <!-- Micrometer context propagation (io.micrometer.context — Activator / Spring AI) -->
+  <bundle id="wrapped.io.micrometer.context-propagation" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="micrometer-commons" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="micrometer-observation" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+
   <!-- Reactor / Reactive Streams -->
   <bundle id="io.projectreactor.reactor-core" version="0.0.0">
     <category name="assistai-deps"/>
