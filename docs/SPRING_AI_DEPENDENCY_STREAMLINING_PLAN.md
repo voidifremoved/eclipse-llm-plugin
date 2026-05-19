@@ -11,7 +11,7 @@ Make the Eclipse plugin build and dependency model boring, repeatable, and easie
 | 1 Build reproducibility | **Mostly complete** | Scripts, `.mvn/`, `BUILDING.md`, CI `tycho.localArtifacts=ignore`. Maven wrapper pending (needs cert fix to generate). |
 | 2 Separate source from output | **Complete** | `site/` jars gitignored/removed; CI deploys from `releng/.../target/repository`. |
 | 3 Centralise versions | **Mostly complete** | Parent POM properties + `docs/DEPENDENCIES.md`. Kept `includeDependencyDepth=direct` with explicit 2nd-level roots; `list-wrapped-bundles.ps1` added. |
-| 4 Isolate Spring AI | **Mostly complete** | Package `com.rubberjam.eclipse.assistai.springai` in main plugin (factory, registry, providers, `MessageAdapter`). Separate OSGi bundle deferred until shared API bundle exists. `McpToolBridge` remains in `agent`. |
+| 4 Isolate Spring AI | **Complete** | `springai` package: factory, registry, providers, `MessageAdapter`, `McpToolBridge`, `AgentChatEngine`/`AgentChatSession`. Agent UI uses `AgentSession` facade + `AgentStreamChunk` only. MCP SDK 2.0.0-M2 aligned with Spring AI. |
 | 5 Provider migration | **Mostly complete** | Agent chat and code completion on Spring AI. Legacy `*StreamJavaHttpClient` stack and `ChatViewPresenter` removed. |
 | 6 Own OSGi metadata | **Started** | OkHttp owned wrapper; `scripts/inventory-p2-repository.ps1` + `docs/OSGI_BUNDLES.md`. |
 | 7 Repository verification | **Mostly complete** | Feature-only `category.xml` + `includeAllDependencies`. Full `mvn clean verify` passes. Install steps documented in `BUILDING.md`. |
@@ -48,8 +48,8 @@ Make the Eclipse plugin build and dependency model boring, repeatable, and easie
 - [x] Create `com.rubberjam.eclipse.assistai.springai` package (in main plugin; separate bundle deferred)
 - [x] Move `ChatModelFactory`, `ChatModelRegistry`, providers, `MessageAdapter` into springai
 - [x] Export `com.rubberjam.eclipse.assistai.springai` packages from main manifest; provider SDK `Import-Package` on main (not on agent UI classes)
-- [ ] Move `McpToolBridge` when MCP registry is exposed without a circular bundle dependency
-- [ ] Reduce remaining Spring AI imports in main (`AgentSession`, `McpToolBridge`) behind a higher-level SPI
+- [x] Move `McpToolBridge` to `com.rubberjam.eclipse.assistai.springai`
+- [x] Agent SPI: `AgentChatEngine`, `AgentChatSession`, `AgentStreamChunk`; `AgentSession` is a Spring-free facade
 
 ### Phase 5: Transition Providers to Spring AI
 
@@ -78,7 +78,8 @@ Make the Eclipse plugin build and dependency model boring, repeatable, and easie
 
 ## Target architecture
 
-- **Main plugin** — Eclipse UI, MCP, preferences, agent UI (`AgentSession`, `McpToolBridge`), Spring AI completion, and the **`com.rubberjam.eclipse.assistai.springai`** package (factory, registry, providers, message adapter)
+- **Main plugin** — Eclipse UI, MCP, preferences, agent UI (`AgentSession` facade, `AgentViewPresenter`)
+- **`com.rubberjam.eclipse.assistai.springai`** — Spring AI chat/completion, `McpToolBridge`, model factory/registry
 - **Future Spring AI OSGi bundle** — optional once a small `assistai.core` API bundle breaks the reactor cycle
 - **OkHttp wrapper** — `wrapped.com.squareup.okhttp3.okhttp`
 

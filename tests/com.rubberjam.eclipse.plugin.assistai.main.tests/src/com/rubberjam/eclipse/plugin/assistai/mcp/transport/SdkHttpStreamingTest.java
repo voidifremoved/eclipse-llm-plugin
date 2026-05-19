@@ -97,7 +97,8 @@ public class SdkHttpStreamingTest
                         "b" : {
                           "type" : "number"
                         }
-                      }
+                      },
+                      "required" : [ "operation", "a", "b" ]
                     }
                     """;
         

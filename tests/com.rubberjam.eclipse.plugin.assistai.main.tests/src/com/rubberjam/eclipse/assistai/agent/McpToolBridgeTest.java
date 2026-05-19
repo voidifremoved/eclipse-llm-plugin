@@ -3,15 +3,9 @@ package com.rubberjam.eclipse.assistai.agent;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import java.util.HashMap;
-import java.util.Map;
-
 import org.junit.jupiter.api.Test;
 
-import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRegistry;
-
-import io.modelcontextprotocol.client.McpSyncClient;
-import org.springframework.ai.tool.ToolCallback;
+import com.rubberjam.eclipse.assistai.springai.McpToolBridge;
 
 public class McpToolBridgeTest
 {

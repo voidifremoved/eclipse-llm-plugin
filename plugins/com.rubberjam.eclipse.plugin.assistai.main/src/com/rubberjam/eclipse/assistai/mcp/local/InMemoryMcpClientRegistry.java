@@ -72,7 +72,7 @@ public class InMemoryMcpClientRegistry
 
     /**
      * Loads enabled MCP clients on first use. Deferred from {@code @PostConstruct} so E4 can
-     * construct {@link com.rubberjam.eclipse.assistai.agent.McpToolBridge} and related beans first.
+     * construct {@link com.rubberjam.eclipse.assistai.springai.McpToolBridge} and related beans first.
      */
     public void ensureInitialized()
     {

@@ -15,13 +15,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rubberjam.eclipse.assistai.Activator;
-import com.rubberjam.eclipse.assistai.springai.ChatModelRegistry;
+import com.rubberjam.eclipse.assistai.springai.AgentChatEngine;
+import com.rubberjam.eclipse.assistai.springai.AgentChatSession;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptorRepository;
 import com.rubberjam.eclipse.assistai.preferences.PreferenceConstants;
 
 import jakarta.inject.Inject;
-import jakarta.inject.Provider;
 import jakarta.inject.Singleton;
 
 @Creatable
@@ -29,10 +29,7 @@ import jakarta.inject.Singleton;
 public class AgentSessionManager
 {
     @Inject
-    private ChatModelRegistry modelRegistry;
-
-    @Inject
-    private Provider<McpToolBridge> toolBridgeProvider;
+    private AgentChatEngine chatEngine;
 
     @Inject
     private ModelApiDescriptorRepository modelRepository;
@@ -51,8 +48,6 @@ public class AgentSessionManager
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private String activeTabId;
-
-    private McpToolBridge toolBridge;
 
     private boolean loaded;
 
@@ -278,7 +273,8 @@ public class AgentSessionManager
     private AgentSession newSessionInternal( String modelUid, List<AgentMessageSnapshot> messages )
     {
         String systemPrompt = promptBuilder.buildSystemPrompt();
-        AgentSession session = new AgentSession( modelRegistry, getToolBridge(), systemPrompt );
+        AgentChatSession chatSession = chatEngine.createSession( systemPrompt );
+        AgentSession session = new AgentSession( chatSession );
 
         ModelApiDescriptor currentModel = modelUid != null
                 ? modelRepository.findById( modelUid ).orElse( modelRepository.getChatModelInUse() )
@@ -395,12 +391,4 @@ public class AgentSessionManager
         }
     }
 
-    private McpToolBridge getToolBridge()
-    {
-        if ( toolBridge == null )
-        {
-            toolBridge = toolBridgeProvider.get();
-        }
-        return toolBridge;
-    }
 }

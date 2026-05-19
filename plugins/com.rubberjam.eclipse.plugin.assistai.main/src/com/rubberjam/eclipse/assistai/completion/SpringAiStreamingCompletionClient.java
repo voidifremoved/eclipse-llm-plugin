@@ -19,7 +19,7 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.ChatModel;
 
-import com.rubberjam.eclipse.assistai.agent.McpToolBridge;
+import com.rubberjam.eclipse.assistai.springai.McpToolBridge;
 import com.rubberjam.eclipse.assistai.chat.ChatMessage;
 import com.rubberjam.eclipse.assistai.chat.Conversation;
 import com.rubberjam.eclipse.assistai.chat.ConversationContext;

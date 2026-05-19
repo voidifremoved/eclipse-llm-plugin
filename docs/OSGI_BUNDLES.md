@@ -23,7 +23,7 @@ mvn -DskipTests package 2>&1 | Tee-Object build.log
 |----------|----------|-------|
 | OkHttp | **Owned wrapper** | `plugins/com.rubberjam.eclipse.assistai.osgi.okhttp` — explicit MANIFEST, no invalid `!kotlin.*` imports |
 | Tomcat embed core | **Embedded in main** | `lib/tomcat-embed-core-*.jar` on main bundle classpath |
-| MCP JSON Jackson2 | **Embedded in main** | `lib/mcp-json-jackson2-*.jar` on main bundle classpath |
+| MCP JSON Jackson2 | **Embedded in main** | `lib/mcp-json-jackson2-2.0.0-M2.jar` (ServiceLoader); `mcp-core`/`mcp` from target at 2.0.0-M2 |
 | Spring AI / provider SDKs | **Target-generated** | `missingManifest=generate` on Maven target location |
 
 ## Next decisions (Phase 6)

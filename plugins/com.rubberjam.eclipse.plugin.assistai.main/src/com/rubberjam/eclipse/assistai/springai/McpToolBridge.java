@@ -1,4 +1,4 @@
-package com.rubberjam.eclipse.assistai.agent;
+package com.rubberjam.eclipse.assistai.springai;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -6,6 +6,9 @@ import java.util.Objects;
 
 import org.eclipse.e4.core.di.annotations.Creatable;
 
+import com.rubberjam.eclipse.assistai.agent.ToolCallEvent;
+import com.rubberjam.eclipse.assistai.agent.ToolCallEventListener;
+import com.rubberjam.eclipse.assistai.agent.ToolCallStatus;
 import com.rubberjam.eclipse.assistai.chat.ConversationContext;
 import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRegistry;
 
@@ -30,9 +33,6 @@ public class McpToolBridge
     @Inject
     private Provider<InMemoryMcpClientRegistry> mcpClientRegistryProvider;
 
-    /**
-     * Spring AI tool callbacks for every enabled MCP client.
-     */
     public ToolCallback[] getToolCallbacks()
     {
         return getToolCallbacks( ToolCallEventListener.noop() );

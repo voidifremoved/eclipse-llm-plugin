@@ -154,15 +154,21 @@ public class McpServerFactory
                         }
                     }
                 }
-                McpSchema.JsonSchema schema = new McpSchema.JsonSchema( toolAnnotation.type(), properties, required, false, null, null );
-                McpSchema.Tool tool = new McpSchema.Tool( toolAnnotation.name(), 
-                                                          toolAnnotation.name(), // title
-                                                          toolAnnotation.description(), 
-                                                          schema, 
-                                                          null, //outputSchema
-                                                          null, //tool annotations
-                                                          null // tool meta 
-                                                          );
+                Map<String, Object> inputSchema = new LinkedHashMap<>();
+                inputSchema.put( "type", toolAnnotation.type() );
+                inputSchema.put( "properties", properties );
+                if ( !required.isEmpty() )
+                {
+                    inputSchema.put( "required", required );
+                }
+                McpSchema.Tool tool = new McpSchema.Tool(
+                        toolAnnotation.name(),
+                        toolAnnotation.name(),
+                        toolAnnotation.description(),
+                        inputSchema,
+                        null,
+                        null,
+                        null );
                 tools.add( tool );
             }
         }

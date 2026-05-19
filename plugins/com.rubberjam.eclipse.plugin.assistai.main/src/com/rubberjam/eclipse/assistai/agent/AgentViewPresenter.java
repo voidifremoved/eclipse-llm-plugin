@@ -159,12 +159,12 @@ public class AgentViewPresenter implements IResourceCacheListener
             tabState.currentStream = session.sendMessage( userText, tabAttachments, userMessageId )
                 .subscribeOn( Schedulers.boundedElastic() )
                 .subscribe(
-                    chatResponse -> {
+                    chunk -> {
                         if ( !isCurrentGeneration( tabState, generationId ) )
                         {
                             return;
                         }
-                        String content = chatResponse.getResult().getOutput().getText();
+                        String content = chunk.text();
                         if ( content != null )
                         {
                             tabState.pendingAssistantHtml.append( content );
