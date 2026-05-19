@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <?pde version="3.8"?>
-<target name="AssistAI Target Platform" sequenceNumber="29">
+<target name="AssistAI Target Platform" sequenceNumber="31">
 	<locations>
 
 		<!-- Eclipse 2026-03 (4.39) release train — single planner location.
@@ -412,6 +412,40 @@
 					<artifactId>spring-ai-openai</artifactId>
 					<version>2.0.0-M6</version>
 					<type>jar</type>
+					<exclusions>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib-jdk8</artifactId>
+						</exclusion>
+					</exclusions>
+				</dependency>
+				<dependency>
+					<groupId>com.openai</groupId>
+					<artifactId>openai-java</artifactId>
+					<version>4.34.0</version>
+					<type>jar</type>
+					<exclusions>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib-jdk8</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>com.squareup.okhttp3</groupId>
+							<artifactId>okhttp</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>com.squareup.okio</groupId>
+							<artifactId>okio-jvm</artifactId>
+						</exclusion>
+					</exclusions>
 				</dependency>
 				<dependency>
 					<groupId>com.openai</groupId>
@@ -427,6 +461,14 @@
 							<groupId>com.squareup.okio</groupId>
 							<artifactId>okio-jvm</artifactId>
 						</exclusion>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib-jdk8</artifactId>
+						</exclusion>
 					</exclusions>
 				</dependency>
 				<dependency>
@@ -434,24 +476,72 @@
 					<artifactId>openai-java-core</artifactId>
 					<version>4.34.0</version>
 					<type>jar</type>
+					<exclusions>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib-jdk8</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>com.squareup.okhttp3</groupId>
+							<artifactId>okhttp</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>com.squareup.okio</groupId>
+							<artifactId>okio-jvm</artifactId>
+						</exclusion>
+					</exclusions>
 				</dependency>
 				<dependency>
 					<groupId>org.springframework.ai</groupId>
 					<artifactId>spring-ai-anthropic</artifactId>
 					<version>2.0.0-M6</version>
 					<type>jar</type>
+					<exclusions>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib-jdk8</artifactId>
+						</exclusion>
+					</exclusions>
 				</dependency>
 				<dependency>
 					<groupId>org.springframework.ai</groupId>
 					<artifactId>spring-ai-google-genai</artifactId>
 					<version>2.0.0-M6</version>
 					<type>jar</type>
+					<exclusions>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib-jdk8</artifactId>
+						</exclusion>
+					</exclusions>
 				</dependency>
 				<dependency>
 					<groupId>com.google.genai</groupId>
 					<artifactId>google-genai</artifactId>
-					<version>1.37.0</version>
+					<version>1.44.0</version>
 					<type>jar</type>
+					<exclusions>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib-jdk8</artifactId>
+						</exclusion>
+					</exclusions>
 				</dependency>
 				<dependency>
 					<groupId>org.springframework.ai</groupId>
@@ -477,9 +567,43 @@
 				     includeDependencyDepth=direct does not pull 2nd-level transitives. -->
 				<dependency>
 					<groupId>com.anthropic</groupId>
+					<artifactId>anthropic-java</artifactId>
+					<version>2.30.0</version>
+					<type>jar</type>
+					<exclusions>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib-jdk8</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>com.squareup.okhttp3</groupId>
+							<artifactId>okhttp</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>com.squareup.okio</groupId>
+							<artifactId>okio-jvm</artifactId>
+						</exclusion>
+					</exclusions>
+				</dependency>
+				<dependency>
+					<groupId>com.anthropic</groupId>
 					<artifactId>anthropic-java-core</artifactId>
 					<version>2.30.0</version>
 					<type>jar</type>
+					<exclusions>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib-jdk8</artifactId>
+						</exclusion>
+					</exclusions>
 				</dependency>
 				<dependency>
 					<groupId>com.anthropic</groupId>
@@ -494,6 +618,10 @@
 						<exclusion>
 							<groupId>com.squareup.okio</groupId>
 							<artifactId>okio-jvm</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>org.jetbrains.kotlin</groupId>
+							<artifactId>kotlin-stdlib</artifactId>
 						</exclusion>
 						<exclusion>
 							<groupId>org.jetbrains.kotlin</groupId>
@@ -519,14 +647,14 @@
 					<version>2.2.31</version>
 					<type>jar</type>
 				</dependency>
-				<!-- OSGi-ready Kotlin (stdlib + reflect); okio/okhttp need kotlin.ranges etc. -->
+				<!-- Single Kotlin provider for OkHttp + OpenAI/Anthropic SDKs (avoids Pair ClassCastException). -->
 				<dependency>
 					<groupId>org.jetbrains.kotlin</groupId>
 					<artifactId>kotlin-osgi-bundle</artifactId>
 					<version>1.8.21</version>
 					<type>jar</type>
 				</dependency>
-				<!-- okhttp + okio-jvm: workspace bundle plugins/com.rubberjam.eclipse.assistai.osgi.okhttp (same BSN) -->
+				<!-- okhttp + okio-jvm: workspace bundle plugins/com.rubberjam.eclipse.assistai.osgi.okhttp -->
 				<dependency>
 					<groupId>org.apache.httpcomponents.client5</groupId>
 					<artifactId>httpclient5</artifactId>

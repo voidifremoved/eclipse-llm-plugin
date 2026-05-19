@@ -27,7 +27,8 @@ To list wrapped Maven names from a Tycho resolve log:
 
 | Artifact | Approach | Rationale |
 |----------|----------|-----------|
-| **OkHttp / Okio / Kotlin** | **Owned wrapper** | `plugins/com.rubberjam.eclipse.assistai.osgi.okhttp` — explicit MANIFEST, valid Kotlin imports; Tycho exclusions on SDK okhttp clients |
+| **OkHttp / Okio** | **Owned wrapper** | `plugins/com.rubberjam.eclipse.assistai.osgi.okhttp` — explicit MANIFEST; Tycho exclusions on SDK okhttp clients |
+| **Kotlin** | **Target `kotlin-osgi-bundle`** | Single provider `org.jetbrains.kotlin.osgi-bundle` 1.8.21; **not** embedded in OkHttp wrapper; exclude `kotlin-stdlib*` from OpenAI/Anthropic/GenAI roots |
 | **Tomcat embed core** | **Embedded in main** | `lib/tomcat-embed-core-*.jar` on main `Bundle-Classpath`; servlet API from p2 `jakarta.servlet-api`, not from Tomcat’s transitive servlet JAR |
 | **MCP JSON Jackson2** | **Embedded in main** | `lib/mcp-json-jackson2-2.0.0-M2.jar` for ServiceLoader wiring; **not** a target root; excluded from `mcp` / `mcp-core` / `spring-ai-mcp` |
 | **MCP `mcp` + `mcp-core`** | **Target-generated** | Explicit roots at 2.0.0-M2; `spring-ai-mcp` excludes older MCP 1.x transitives |
@@ -49,11 +50,13 @@ Maven `<exclusions>` on target roots in `releng/.../assistai.target` (sequence 2
 | Spring Framework 7 roots | `slf4j-api` | Eclipse platform `org.slf4j` |
 | `spring-web` | `jakarta.servlet-api` | p2 IU `jakarta.servlet-api` |
 | `openai-java-client-okhttp`, `anthropic-java-client-okhttp` | `okhttp`, `okio-jvm` | `wrapped.com.squareup.okhttp3.okhttp` |
-| `anthropic-java-client-okhttp` | `kotlin-stdlib-jdk8` | `kotlin-osgi-bundle` target root |
+| `openai-java-*`, `spring-ai-openai`, `google-genai`, `anthropic-java-*`, `spring-ai-anthropic`, `spring-ai-google-genai` | `kotlin-stdlib`, `kotlin-stdlib-jdk8` | `org.jetbrains.kotlin.osgi-bundle` (feature + target root) |
 
 Removed duplicate target roots: `json-schema-validator` 2.0.1, `mcp-json-jackson2` (embed only).
 
 If a new resolver conflict appears, prefer a targeted exclusion on the pulling root before adding another explicit target dependency.
+
+Tycho also filters `wrapped.org.jetbrains.kotlin.kotlin-stdlib-jdk8` from the resolved target platform (`pom.xml` `target-platform-configuration`) so only `org.jetbrains.kotlin.osgi-bundle` supplies `kotlin.*` at runtime.
 
 ## Release review checklist
 

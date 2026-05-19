@@ -30,5 +30,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
    <plugin
          id="wrapped.com.squareup.okhttp3.okhttp"
          version="0.0.0"/>
+   <plugin
+         id="org.jetbrains.kotlin.osgi-bundle"
+         version="0.0.0"/>
 
 </feature>
