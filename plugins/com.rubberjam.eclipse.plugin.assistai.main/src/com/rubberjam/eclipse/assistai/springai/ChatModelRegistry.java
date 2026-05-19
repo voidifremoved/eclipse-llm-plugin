@@ -1,4 +1,4 @@
-package com.rubberjam.eclipse.assistai.agent;
+package com.rubberjam.eclipse.assistai.springai;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

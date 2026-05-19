@@ -1,11 +1,11 @@
-package com.rubberjam.eclipse.assistai.agent;
+package com.rubberjam.eclipse.assistai.springai;
 
 import org.eclipse.e4.core.di.annotations.Creatable;
 
-import com.rubberjam.eclipse.assistai.agent.provider.AnthropicChatModelProvider;
-import com.rubberjam.eclipse.assistai.agent.provider.ChatModelProvider;
-import com.rubberjam.eclipse.assistai.agent.provider.GoogleGenAiChatModelProvider;
-import com.rubberjam.eclipse.assistai.agent.provider.OpenAiCompatibleChatModelProvider;
+import com.rubberjam.eclipse.assistai.springai.provider.AnthropicChatModelProvider;
+import com.rubberjam.eclipse.assistai.springai.provider.ChatModelProvider;
+import com.rubberjam.eclipse.assistai.springai.provider.GoogleGenAiChatModelProvider;
+import com.rubberjam.eclipse.assistai.springai.provider.OpenAiCompatibleChatModelProvider;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 
 import jakarta.inject.Singleton;
@@ -15,9 +15,9 @@ import org.springframework.ai.chat.model.StreamingChatModel;
 /**
  * Builds {@link ChatModel} instances for the agent workflow.
  * <p>
- * Callers ({@link AgentSession}, {@link ChatModelRegistry}) depend only on
- * {@link ChatModel} and {@link org.springframework.ai.chat.client.ChatClient}.
- * Provider-specific types (OpenAI, Anthropic, etc.) stay in {@code agent.provider}.
+ * Callers depend only on {@link ChatModel} and
+ * {@link org.springframework.ai.chat.client.ChatClient}.
+ * Provider-specific types stay in {@code springai.provider}.
  */
 @Creatable
 @Singleton

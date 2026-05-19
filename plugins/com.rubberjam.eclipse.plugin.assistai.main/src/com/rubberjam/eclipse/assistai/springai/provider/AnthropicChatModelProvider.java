@@ -1,4 +1,4 @@
-package com.rubberjam.eclipse.assistai.agent.provider;
+package com.rubberjam.eclipse.assistai.springai.provider;
 
 import com.anthropic.models.messages.Model;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;

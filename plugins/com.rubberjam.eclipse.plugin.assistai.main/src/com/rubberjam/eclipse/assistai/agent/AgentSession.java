@@ -8,6 +8,8 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.ChatModel;
 
+import com.rubberjam.eclipse.assistai.springai.ChatModelRegistry;
+import com.rubberjam.eclipse.assistai.springai.MessageAdapter;
 import com.rubberjam.eclipse.assistai.chat.Attachment;
 import com.rubberjam.eclipse.assistai.chat.ChatMessage;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;

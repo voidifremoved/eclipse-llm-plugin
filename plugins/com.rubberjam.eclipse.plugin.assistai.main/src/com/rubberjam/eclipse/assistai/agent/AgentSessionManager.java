@@ -15,6 +15,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rubberjam.eclipse.assistai.Activator;
+import com.rubberjam.eclipse.assistai.springai.ChatModelRegistry;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptorRepository;
 import com.rubberjam.eclipse.assistai.preferences.PreferenceConstants;

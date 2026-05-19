@@ -2,7 +2,7 @@ package com.rubberjam.eclipse.assistai.preferences.models;
 
 import org.eclipse.e4.core.di.annotations.Creatable;
 
-import com.rubberjam.eclipse.assistai.agent.ChatModelRegistry;
+import com.rubberjam.eclipse.assistai.springai.ChatModelRegistry;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptorRepository;
 

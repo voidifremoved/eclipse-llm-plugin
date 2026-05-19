@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import org.junit.jupiter.api.Test;
 
 import com.rubberjam.eclipse.assistai.chat.ChatMessage;
+import com.rubberjam.eclipse.assistai.springai.MessageAdapter;
 
 /**
  * Tests {@link MessageAdapter} without referencing Spring AI types directly, so the test

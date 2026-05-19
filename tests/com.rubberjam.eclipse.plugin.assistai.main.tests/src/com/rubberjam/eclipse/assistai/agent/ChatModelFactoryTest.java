@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import org.junit.jupiter.api.Test;
 
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
+import com.rubberjam.eclipse.assistai.springai.ChatModelFactory;
 
 public class ChatModelFactoryTest {
 

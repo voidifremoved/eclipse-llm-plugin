@@ -45,9 +45,7 @@ Require-Bundle: org.eclipse.e4.ui.services,
  org.eclipse.pde.launching,
  jakarta.annotation-api;bundle-version="2.1.1",
  jakarta.inject.jakarta.inject-api;bundle-version="2.0.1",
- org.jetbrains.kotlin.osgi-bundle;bundle-version="[1.8,2)",
- wrapped.com.openai.openai-java-client-okhttp;bundle-version="[4.34,5)",
- wrapped.com.anthropic.anthropic-java-client-okhttp;bundle-version="[2.30,3)"
+ wrapped.com.squareup.okhttp3.okhttp;bundle-version="[4.12.1,5)"
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Automatic-Module-Name: assistai.main
 Bundle-Classpath: .,
@@ -75,6 +73,8 @@ Export-Package: com.rubberjam.eclipse.assistai,
  com.rubberjam.eclipse.assistai.view.dnd.handlers,
  com.rubberjam.eclipse.assistai.services,
  com.rubberjam.eclipse.assistai.agent,
+ com.rubberjam.eclipse.assistai.springai,
+ com.rubberjam.eclipse.assistai.springai.provider,
  com.rubberjam.eclipse.plugin.assistai.main,
  com.rubberjam.eclipse.plugin.assistai.mcp.transport,
  jakarta.servlet,
