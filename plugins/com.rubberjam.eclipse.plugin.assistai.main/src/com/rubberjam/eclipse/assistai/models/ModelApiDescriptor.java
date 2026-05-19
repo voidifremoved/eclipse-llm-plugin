@@ -14,12 +14,12 @@ public record ModelApiDescriptor(
          int connectionTimeoutSeconds,
          int requestTimeoutSeconds,
          String modelName,
-         int temperature,
+         float temperature,
          boolean vision,
          boolean functionCalling
          ) {
-   
-    public static final int TEMPERATURE_NOT_SUPPORTED = -1;
+
+    public static final float TEMPERATURE_NOT_SUPPORTED = -1f;
     
     public static ModelApiDescriptor copyWithUid( String uid, ModelApiDescriptor stub) {
         return new ModelApiDescriptor(
@@ -49,7 +49,8 @@ public record ModelApiDescriptor(
     }
     
     /**
-     * UI stores temperature on a 0–10 scale; {@link #TEMPERATURE_NOT_SUPPORTED} is -1.
+     * Returns the API temperature (typically 0.0–2.0). {@link #TEMPERATURE_NOT_SUPPORTED} is omitted.
+     * Legacy preferences stored 0–10 integers; values above 2.0 are scaled down by 10.
      */
     public Optional<Float> scaledTemperature()
     {
@@ -57,7 +58,11 @@ public record ModelApiDescriptor(
         {
             return Optional.empty();
         }
-        return Optional.of( temperature / 10.0f );
+        if ( temperature > 2.0f )
+        {
+            return Optional.of( temperature / 10.0f );
+        }
+        return Optional.of( temperature );
     }
     
 } 

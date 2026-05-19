@@ -1311,6 +1311,13 @@ public class AgentViewPresenter implements IResourceCacheListener
         String message = error != null && error.getMessage() != null ? error.getMessage() : "";
         if ( message.contains( "No ToolCallback found for tool name:" ) )
         {
+            String toolName = extractMissingToolName( message );
+            if ( looksLikeJsonObject( toolName ) )
+            {
+                return "The model emitted a malformed tool call: it put JSON arguments in the tool-name field instead of using a registered tool name. "
+                        + "No workspace change was made. Try again with a model that supports OpenAI-compatible tool calling, or switch to ASK/PLAN mode for analysis-only requests. "
+                        + "Details: " + message;
+            }
             return "A workspace tool was invoked but is not registered with Spring AI ("
                     + message
                     + "). Rebuild and restart Eclipse with the latest AssistAI plugin, then check "
@@ -1324,6 +1331,27 @@ public class AgentViewPresenter implements IResourceCacheListener
                     + "Details: " + message;
         }
         return "Error: " + message;
+    }
+
+    private static String extractMissingToolName( String message )
+    {
+        String marker = "No ToolCallback found for tool name:";
+        int index = message.indexOf( marker );
+        if ( index < 0 )
+        {
+            return "";
+        }
+        return message.substring( index + marker.length() ).trim();
+    }
+
+    private static boolean looksLikeJsonObject( String value )
+    {
+        if ( value == null )
+        {
+            return false;
+        }
+        String trimmed = value.trim();
+        return trimmed.startsWith( "{" ) && trimmed.endsWith( "}" );
     }
 
     private static boolean isBadRequest( Throwable error )

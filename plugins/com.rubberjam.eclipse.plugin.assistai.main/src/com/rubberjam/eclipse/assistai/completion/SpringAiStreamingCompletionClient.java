@@ -145,7 +145,16 @@ public class SpringAiStreamingCompletionClient
                 {
                     return;
                 }
-                String content = chatResponse.getResult().getOutput().getText();
+                if ( chatResponse.getResult() == null )
+                {
+                    return;
+                }
+                var output = chatResponse.getResult().getOutput();
+                if ( output == null )
+                {
+                    return;
+                }
+                String content = output.getText();
                 if ( content == null || content.isEmpty() )
                 {
                     return;

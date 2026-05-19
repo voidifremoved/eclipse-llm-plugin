@@ -94,11 +94,100 @@ public class ToolExecutor
      */
     public Object[] mapArguments( Method method, Map<String, Object> argMap )
     {
-        return Arrays.stream( method.getParameters() )
-                    .map( ToolExecutor::toParamName )
-                    .map( argMap::get )
-                    .toArray();
+        Parameter[] parameters = method.getParameters();
+        Object[] values = new Object[parameters.length];
+        for ( int i = 0; i < parameters.length; i++ )
+        {
+            Parameter parameter = parameters[i];
+            String name = toParamName( parameter );
+            values[i] = coerceArgument( argMap.get( name ), parameter.getType() );
+        }
+        return values;
+    }
 
+    /**
+     * Coerces JSON-deserialized tool arguments to the declared Java parameter type.
+     * Models often send booleans and numbers as native JSON types while tools declare String parameters.
+     */
+    static Object coerceArgument( Object raw, Class<?> targetType )
+    {
+        if ( targetType == null )
+        {
+            return raw;
+        }
+        if ( raw == null )
+        {
+            if ( targetType == boolean.class )
+            {
+                return false;
+            }
+            if ( targetType == int.class )
+            {
+                return 0;
+            }
+            if ( targetType == long.class )
+            {
+                return 0L;
+            }
+            if ( targetType == double.class )
+            {
+                return 0.0d;
+            }
+            if ( targetType == float.class )
+            {
+                return 0.0f;
+            }
+            return null;
+        }
+        if ( targetType.isInstance( raw ) )
+        {
+            return raw;
+        }
+        if ( targetType == String.class )
+        {
+            return raw instanceof String text ? text : String.valueOf( raw );
+        }
+        if ( targetType == boolean.class || targetType == Boolean.class )
+        {
+            if ( raw instanceof Boolean bool )
+            {
+                return bool;
+            }
+            return Boolean.parseBoolean( String.valueOf( raw ) );
+        }
+        if ( targetType == int.class || targetType == Integer.class )
+        {
+            if ( raw instanceof Number number )
+            {
+                return number.intValue();
+            }
+            return Integer.parseInt( String.valueOf( raw ) );
+        }
+        if ( targetType == long.class || targetType == Long.class )
+        {
+            if ( raw instanceof Number number )
+            {
+                return number.longValue();
+            }
+            return Long.parseLong( String.valueOf( raw ) );
+        }
+        if ( targetType == double.class || targetType == Double.class )
+        {
+            if ( raw instanceof Number number )
+            {
+                return number.doubleValue();
+            }
+            return Double.parseDouble( String.valueOf( raw ) );
+        }
+        if ( targetType == float.class || targetType == Float.class )
+        {
+            if ( raw instanceof Number number )
+            {
+                return number.floatValue();
+            }
+            return Float.parseFloat( String.valueOf( raw ) );
+        }
+        return raw;
     }
 
     /**

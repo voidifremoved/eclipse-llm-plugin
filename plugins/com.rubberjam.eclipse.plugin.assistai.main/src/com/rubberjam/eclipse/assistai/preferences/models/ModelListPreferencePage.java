@@ -21,7 +21,6 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Group;
 import org.eclipse.swt.widgets.Label;
-import org.eclipse.swt.widgets.Scale;
 import org.eclipse.swt.widgets.Table;
 import org.eclipse.swt.widgets.TableColumn;
 import org.eclipse.swt.widgets.TableItem;
@@ -55,13 +54,20 @@ public class ModelListPreferencePage extends PreferencePage implements IWorkbenc
 
     private Button     withFunctionCalls;
 
-    private Scale      withTemperature;
+    private Text       withTemperature;
 
     private Group      form;
 
     private Button     addButton;
 
     private Button     removeButton;
+
+    private int        lastSelectedIndex = -1;
+
+    public ModelListPreferencePage()
+    {
+        setPreferenceStore( Activator.getDefault().getPreferenceStore() );
+    }
 
     @Override
     public void init( IWorkbench workbench )
@@ -125,19 +131,24 @@ public class ModelListPreferencePage extends PreferencePage implements IWorkbenc
     protected void performApply()
     {
         int selectedIndex = modelTable.getSelectionIndex();
-        ModelApiDescriptor updatedModel = new ModelApiDescriptor(
-                "",
-                "openai", 
-                apiUrl.getText(), 
-                apiKey.getText(), 
-                parseTimeout(connectionTimeout.getText(), 10),
-                parseTimeout(requestTimeout.getText(), 30),
-                modelName.getText(),
-                withTemperature.getSelection(), 
-                withVision.getSelection(), 
-                withFunctionCalls.getSelection() );
-        presenter.saveModel( selectedIndex, updatedModel );
+        if ( selectedIndex >= 0 )
+        {
+            commitModelAt( selectedIndex, false );
+            lastSelectedIndex = selectedIndex;
+        }
         super.performApply();
+    }
+
+    @Override
+    public boolean performOk()
+    {
+        int selectedIndex = modelTable.getSelectionIndex();
+        if ( selectedIndex >= 0 )
+        {
+            commitModelAt( selectedIndex, false );
+            lastSelectedIndex = selectedIndex;
+        }
+        return super.performOk();
     }
 
     @Override
@@ -156,6 +167,11 @@ public class ModelListPreferencePage extends PreferencePage implements IWorkbenc
             {
                 Objects.requireNonNull( presenter );
                 int selectedIndex = modelTable.getSelectionIndex();
+                if ( lastSelectedIndex >= 0 && lastSelectedIndex != selectedIndex )
+                {
+                    commitModelAt( lastSelectedIndex, true );
+                }
+                lastSelectedIndex = selectedIndex;
                 presenter.setSelectedModel( selectedIndex );
             }
         } );    
@@ -179,20 +195,9 @@ public class ModelListPreferencePage extends PreferencePage implements IWorkbenc
         modelName = addTextField( form, "Model Name:");
         withVision = addCheckField( form, "With Vision:");
         withFunctionCalls = addCheckField( form, "With Function Calls:");
-        withTemperature = addScaleField( form, "Temperature");
+        withTemperature = addTextField( form, "Temperature (0–2, -1 = provider default):" );
 
         return form;
-    }
-
-    private Scale addScaleField( Composite form, String labelText)
-    {
-        Scale scale = new Scale( form, SWT.NONE );
-        scale.setMinimum( -1 );
-        scale.setMaximum( 10 );
-        scale.setIncrement( 1 );
-        scale.setPageIncrement( 1 );
-        addFormControl( scale, form, labelText);
-        return scale;
     }
 
     private Button addCheckField( Composite form, String labelText)
@@ -273,7 +278,7 @@ public class ModelListPreferencePage extends PreferencePage implements IWorkbenc
             connectionTimeout.setText( String.valueOf(modelApiDescriptor.connectionTimeoutSeconds()) );
             requestTimeout.setText( String.valueOf(modelApiDescriptor.requestTimeoutSeconds()) );
             modelName.setText( modelApiDescriptor.modelName() );
-            withTemperature.setSelection( modelApiDescriptor.temperature() );
+            withTemperature.setText( formatTemperatureForUi( modelApiDescriptor ) );
             withVision.setSelection( modelApiDescriptor.vision() );
             withFunctionCalls.setSelection( modelApiDescriptor.functionCalling() );
         } );
@@ -292,7 +297,7 @@ public class ModelListPreferencePage extends PreferencePage implements IWorkbenc
             connectionTimeout.setText( "10" );
             requestTimeout.setText( "30" );
             modelName.setText( "" );
-            withTemperature.setSelection( 0 );
+            withTemperature.setText( "0.7" );
             withVision.setSelection( false );
             withFunctionCalls.setSelection( false );
         } );
@@ -325,7 +330,54 @@ public class ModelListPreferencePage extends PreferencePage implements IWorkbenc
                 return;
             }
             modelTable.deselectAll();
+            lastSelectedIndex = -1;
         } );
+    }
+
+    public void selectAndShowModel( int index, ModelApiDescriptor model )
+    {
+        uiSync.asyncExec( () -> {
+            if ( modelTable == null || modelTable.isDisposed() )
+            {
+                return;
+            }
+            if ( index >= 0 && index < modelTable.getItemCount() )
+            {
+                modelTable.select( index );
+                lastSelectedIndex = index;
+            }
+            showModelDetails( model );
+        } );
+    }
+
+    private void commitModelAt( int selectedIndex, boolean quiet )
+    {
+        if ( selectedIndex < 0 || apiUrl == null || apiUrl.isDisposed() )
+        {
+            return;
+        }
+        String apiType = presenter.findByIndex( selectedIndex )
+                .map( ModelApiDescriptor::apiType )
+                .orElse( "openai" );
+        ModelApiDescriptor updatedModel = new ModelApiDescriptor(
+                "",
+                apiType,
+                apiUrl.getText(),
+                apiKey.getText(),
+                parseTimeout( connectionTimeout.getText(), 10 ),
+                parseTimeout( requestTimeout.getText(), 30 ),
+                modelName.getText(),
+                parseTemperature( withTemperature.getText() ),
+                withVision.getSelection(),
+                withFunctionCalls.getSelection() );
+        if ( quiet )
+        {
+            presenter.saveModelQuietly( selectedIndex, updatedModel );
+        }
+        else
+        {
+            presenter.saveModel( selectedIndex, updatedModel );
+        }
     }
 
     private static int parseTimeout(String text, int defaultValue)
@@ -336,5 +388,37 @@ public class ModelListPreferencePage extends PreferencePage implements IWorkbenc
         } catch (NumberFormatException e) {
             return defaultValue;
         }
+    }
+
+    private static float parseTemperature( String text )
+    {
+        try
+        {
+            return Float.parseFloat( text.trim() );
+        }
+        catch ( NumberFormatException e )
+        {
+            return 0.7f;
+        }
+    }
+
+    private static String formatTemperatureForUi( ModelApiDescriptor descriptor )
+    {
+        if ( descriptor.temperature() < 0 )
+        {
+            return "-1";
+        }
+        return descriptor.scaledTemperature()
+                .map( ModelListPreferencePage::formatTemperature )
+                .orElse( "-1" );
+    }
+
+    private static String formatTemperature( float value )
+    {
+        if ( value == (float) (int) value )
+        {
+            return String.valueOf( (int) value );
+        }
+        return String.valueOf( value );
     }
 }

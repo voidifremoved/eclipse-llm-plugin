@@ -15,13 +15,20 @@ public class ModelApiDescriptorTest
     }
 
     @Test
-    public void scaledTemperatureScalesZeroToTenRange()
+    public void scaledTemperatureScalesLegacyZeroToTenRange()
     {
         ModelApiDescriptor descriptor = descriptorWithTemperature( 7 );
         assertEquals( 0.7f, descriptor.scaledTemperature().orElseThrow(), 0.001f );
     }
 
-    private static ModelApiDescriptor descriptorWithTemperature( int temperature )
+    @Test
+    public void scaledTemperatureUsesDirectFloatValue()
+    {
+        ModelApiDescriptor descriptor = descriptorWithTemperature( 1.0f );
+        assertEquals( 1.0f, descriptor.scaledTemperature().orElseThrow(), 0.001f );
+    }
+
+    private static ModelApiDescriptor descriptorWithTemperature( float temperature )
     {
         return new ModelApiDescriptor(
                 "uid",

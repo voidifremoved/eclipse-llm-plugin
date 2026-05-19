@@ -10,6 +10,7 @@ import java.util.function.Consumer;
 
 import org.eclipse.core.runtime.ILog;
 import org.eclipse.e4.core.di.annotations.Creatable;
+import org.eclipse.jface.preference.IPersistentPreferenceStore;
 import org.eclipse.jface.preference.IPreferenceStore;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -106,7 +107,19 @@ public class ModelApiDescriptorRepository
 	private void saveAll( List<ModelApiDescriptor> models )
 	{
         String json = toJson( models );
-        getPreferenceStore().setValue( PreferenceConstants.ASSISTAI_DEFINED_MODELS, json );
+        IPreferenceStore store = getPreferenceStore();
+        store.setValue( PreferenceConstants.ASSISTAI_DEFINED_MODELS, json );
+        if ( store instanceof IPersistentPreferenceStore persistentStore )
+        {
+            try
+            {
+                persistentStore.save();
+            }
+            catch ( IOException e )
+            {
+                logger.error( "Failed to persist model preferences", e );
+            }
+        }
         logger.info( "AI models updated" );
 	}
 

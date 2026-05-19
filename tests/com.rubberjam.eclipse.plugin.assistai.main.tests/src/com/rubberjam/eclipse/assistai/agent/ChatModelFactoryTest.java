@@ -20,7 +20,7 @@ public class ChatModelFactoryTest {
             10,
             30,
             "gpt-4",
-            10,
+            1.0f,
             false,
             false
         );

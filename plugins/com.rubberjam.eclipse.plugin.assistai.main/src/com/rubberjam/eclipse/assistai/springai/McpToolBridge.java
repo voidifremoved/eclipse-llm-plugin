@@ -279,32 +279,59 @@ public class McpToolBridge
             }
             catch ( TimeoutException e )
             {
-                String message = "Tool call timed out: " + toolName;
+                String message = formatToolFailureMessage(
+                        toolName,
+                        "Tool call timed out. Stop retrying the same call; summarize what was attempted and ask the user before continuing." );
                 listener.onToolCallEvent( new ToolCallEvent(
                         id,
                         toolName,
                         toolInput,
                         message,
                         ToolCallStatus.FAILED ) );
-                throw new RuntimeException( message, e );
+                return message;
             }
             catch ( Exception e )
             {
-                String message = e.getCause() != null && e.getCause().getMessage() != null
-                        ? e.getCause().getMessage()
-                        : e.getMessage();
+                String causeMessage = rootCauseMessage( e );
+                String message = formatToolFailureMessage(
+                        toolName,
+                        causeMessage != null ? causeMessage : "Tool call failed." );
                 listener.onToolCallEvent( new ToolCallEvent(
                         id,
                         toolName,
                         toolInput,
                         message,
                         ToolCallStatus.FAILED ) );
-                if ( e instanceof RuntimeException runtime )
-                {
-                    throw runtime;
-                }
-                throw new RuntimeException( message, e );
+                return message;
             }
+        }
+
+        private static String rootCauseMessage( Throwable throwable )
+        {
+            Throwable cursor = throwable;
+            while ( cursor.getCause() != null )
+            {
+                cursor = cursor.getCause();
+            }
+            String message = cursor.getMessage();
+            if ( message == null || message.isBlank() )
+            {
+                message = throwable.getMessage();
+            }
+            return message;
+        }
+
+        private static String formatToolFailureMessage( String toolName, String reason )
+        {
+            StringBuilder message = new StringBuilder();
+            message.append( "Tool call failed" );
+            if ( toolName != null && !toolName.isBlank() )
+            {
+                message.append( " for " ).append( toolName );
+            }
+            message.append( ": " ).append( reason != null ? reason : "" );
+            message.append( "\n\nThe tool did not make the requested change. Use the failure details to choose a different approach, such as rereading the file, narrowing the target range, or using applyPatch with current file context." );
+            return message.toString();
         }
     }
 }

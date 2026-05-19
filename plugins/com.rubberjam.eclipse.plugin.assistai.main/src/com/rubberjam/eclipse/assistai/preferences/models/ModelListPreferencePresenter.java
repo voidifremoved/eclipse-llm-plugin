@@ -1,5 +1,7 @@
 package com.rubberjam.eclipse.assistai.preferences.models;
 
+import java.util.Optional;
+
 import org.eclipse.e4.core.di.annotations.Creatable;
 
 import com.rubberjam.eclipse.assistai.springai.ChatModelRegistry;
@@ -50,12 +52,24 @@ public class ModelListPreferencePresenter
 					  } );
     }
 
-    public void saveModel( int selectedIndex, ModelApiDescriptor updatedModelStub )
+    public Optional<ModelApiDescriptor> findByIndex( int selectedIndex )
+    {
+        return repository.findByIndex( selectedIndex );
+    }
+
+    public ModelApiDescriptor saveModelQuietly( int selectedIndex, ModelApiDescriptor updatedModelStub )
     {
         ModelApiDescriptor saved = repository.save( selectedIndex, updatedModelStub );
         chatModelRegistry.invalidate( saved.uid() );
-	view.showModels( repository.listModelApiDescriptors() );
-        view.clearModelDetails();
+        return saved;
+    }
+
+    public void saveModel( int selectedIndex, ModelApiDescriptor updatedModelStub )
+    {
+        ModelApiDescriptor saved = saveModelQuietly( selectedIndex, updatedModelStub );
+        int newIndex = repository.indexOf( saved.uid() );
+        view.showModels( repository.listModelApiDescriptors() );
+        view.selectAndShowModel( newIndex, saved );
     }
 
     public void setSelectedModel( int selectedIndex )

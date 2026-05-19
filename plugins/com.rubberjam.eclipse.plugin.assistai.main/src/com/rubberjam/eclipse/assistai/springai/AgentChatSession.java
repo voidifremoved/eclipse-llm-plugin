@@ -117,7 +117,8 @@ public class AgentChatSession
                 .messages( conversationHistory )
                 .stream()
                 .chatResponse()
-                .map( this::toStreamChunk );
+                .map( this::toStreamChunk )
+                .filter( chunk -> chunk.hasText() || chunk.hasThinking() );
     }
 
     public void appendAssistantResponse( String messageId, String responseText )
@@ -265,8 +266,20 @@ public class AgentChatSession
 
     private AgentStreamChunk toStreamChunk( ChatResponse chatResponse )
     {
-        Generation generation = chatResponse.getResult();
+        if ( chatResponse == null )
+        {
+            return new AgentStreamChunk( "" );
+        }
+        Generation generation = resolveGeneration( chatResponse );
+        if ( generation == null )
+        {
+            return new AgentStreamChunk( "" );
+        }
         AssistantMessage output = generation.getOutput();
+        if ( output == null )
+        {
+            return new AgentStreamChunk( "" );
+        }
         String content = output.getText();
         String thinking = extractReasoningText( output );
         if ( thinking != null && !thinking.isEmpty() )
@@ -276,6 +289,21 @@ public class AgentChatSession
                     thinking );
         }
         return new AgentStreamChunk( content != null ? content : "" );
+    }
+
+    private static Generation resolveGeneration( ChatResponse chatResponse )
+    {
+        Generation generation = chatResponse.getResult();
+        if ( generation != null )
+        {
+            return generation;
+        }
+        List<Generation> results = chatResponse.getResults();
+        if ( results == null || results.isEmpty() )
+        {
+            return null;
+        }
+        return results.get( 0 );
     }
 
     private static String extractReasoningText( AssistantMessage output )
