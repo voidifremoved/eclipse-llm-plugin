@@ -71,6 +71,30 @@
             description="Trigger AI-powered code completion"
             categoryId="com.rubberjam.eclipse.assistai.commands.category">
       </command>
+      <command
+            id="com.rubberjam.eclipse.assistai.commands.agentNewTab"
+            name="New Agent Tab"
+            description="Create a new agent chat tab"
+            categoryId="com.rubberjam.eclipse.assistai.commands.category">
+      </command>
+      <command
+            id="com.rubberjam.eclipse.assistai.commands.agentClearTab"
+            name="Clear Agent Tab"
+            description="Clear the current agent tab conversation"
+            categoryId="com.rubberjam.eclipse.assistai.commands.category">
+      </command>
+      <command
+            id="com.rubberjam.eclipse.assistai.commands.agentFocusView"
+            name="Focus Agent View"
+            description="Show and focus the AI Chat view"
+            categoryId="com.rubberjam.eclipse.assistai.commands.category">
+      </command>
+      <command
+            id="com.rubberjam.eclipse.assistai.commands.agentStop"
+            name="Stop Agent"
+            description="Stop the current agent generation"
+            categoryId="com.rubberjam.eclipse.assistai.commands.category">
+      </command>
    </extension>
 
    <!-- Handler for AI Code Completion Command -->
@@ -78,6 +102,22 @@
       <handler
             commandId="com.rubberjam.eclipse.assistai.commands.aiCompletion"
             class="com.rubberjam.eclipse.assistai.completion.AICompletionHandler">
+      </handler>
+      <handler
+            commandId="com.rubberjam.eclipse.assistai.commands.agentNewTab"
+            class="com.rubberjam.eclipse.assistai.handlers.AssistAIAgentNewTabHandler">
+      </handler>
+      <handler
+            commandId="com.rubberjam.eclipse.assistai.commands.agentClearTab"
+            class="com.rubberjam.eclipse.assistai.handlers.AssistAIAgentClearTabHandler">
+      </handler>
+      <handler
+            commandId="com.rubberjam.eclipse.assistai.commands.agentFocusView"
+            class="com.rubberjam.eclipse.assistai.handlers.AssistAIAgentFocusViewHandler">
+      </handler>
+      <handler
+            commandId="com.rubberjam.eclipse.assistai.commands.agentStop"
+            class="com.rubberjam.eclipse.assistai.handlers.AssistAIAgentStopHandler">
       </handler>
    </extension>
 
@@ -93,6 +133,11 @@
             commandId="com.rubberjam.eclipse.plugin.assistai.main.command.addToResources"
             schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"
             sequence="Ctrl+Alt+A">
+      </key>
+      <key
+            commandId="com.rubberjam.eclipse.assistai.commands.agentStop"
+            schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"
+            sequence="Ctrl+Shift+S">
       </key>
    </extension>
 

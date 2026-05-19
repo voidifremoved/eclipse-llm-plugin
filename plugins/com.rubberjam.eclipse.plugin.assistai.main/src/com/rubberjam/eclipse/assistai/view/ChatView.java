@@ -61,13 +61,17 @@ import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Menu;
 import org.eclipse.swt.widgets.MenuItem;
+import org.eclipse.swt.widgets.MenuItem;
 import org.eclipse.swt.widgets.Text;
 import org.eclipse.swt.widgets.ToolBar;
 import org.eclipse.swt.widgets.ToolItem;
 import org.eclipse.ui.ISharedImages;
 import org.eclipse.ui.PlatformUI;
 
+import com.rubberjam.eclipse.assistai.agent.AgentContextSnapshot;
+import com.rubberjam.eclipse.assistai.agent.AgentInteractionMode;
 import com.rubberjam.eclipse.assistai.agent.AgentTaskItem;
+import com.rubberjam.eclipse.assistai.agent.AgentToolCallFormatter;
 import com.rubberjam.eclipse.assistai.agent.AgentViewPresenter;
 import com.rubberjam.eclipse.assistai.chat.Attachment;
 import com.rubberjam.eclipse.assistai.chat.Attachment.UiVisitor;
@@ -131,9 +135,15 @@ public class ChatView
 	
 	private ToolBar  actionToolBar;
 
-    private ToolItem planModeToolItem;
+    private ToolItem modeToolItem;
+
+    private Menu modeMenu;
 
     private ToolItem executePlanToolItem;
+
+    private Label capabilityBannerLabel;
+
+    private AgentContextPanel agentContextPanel;
 
     private Composite agentTasksPanel;
 
@@ -251,16 +261,30 @@ public class ChatView
         createNewAgentTabToolItem( tabToolBar );
         agentTabFolder.setTopRight( tabToolBar, SWT.RIGHT );
 
-        SashForm sashForm = new SashForm( root, SWT.VERTICAL );
-        sashForm.setLayoutData( new GridData( SWT.FILL, SWT.FILL, true, true ) );
+        SashForm horizontalSash = new SashForm( root, SWT.HORIZONTAL );
+        horizontalSash.setLayoutData( new GridData( SWT.FILL, SWT.FILL, true, true ) );
 
-        Composite browserContainer = new Composite( sashForm, SWT.NONE );
+        agentContextPanel = new AgentContextPanel( horizontalSash, SWT.NONE );
+        agentContextPanel.setLayoutData( new GridData( SWT.FILL, SWT.FILL, false, true ) );
+        agentContextPanel.setAddSelectionAction( () -> presenter.onAddEditorSelectionToCache() );
+
+        SashForm sashForm = new SashForm( horizontalSash, SWT.VERTICAL );
+
+        Composite browserColumn = new Composite( sashForm, SWT.NONE );
+        browserColumn.setLayout( new GridLayout( 1, false ) );
+
+        capabilityBannerLabel = new Label( browserColumn, SWT.WRAP );
+        capabilityBannerLabel.setLayoutData( new GridData( SWT.FILL, SWT.CENTER, true, false ) );
+        capabilityBannerLabel.setVisible( false );
+
+        Composite browserContainer = new Composite( browserColumn, SWT.NONE );
         browserContainer.setLayout( new FillLayout() );
+        browserContainer.setLayoutData( new GridData( SWT.FILL, SWT.FILL, true, true ) );
 
         browser = createChatView( browserContainer );
 
-        // Create the JavaScript-to-Java callback
         new CopyCodeFunction( browser, "eclipseFunc" );
+        new OpenResourceBrowserFunction( browser, "openResource" );
 
         Composite controls = new Composite( sashForm, SWT.NONE );
         GridLayout controlsLayout = new GridLayout(1, false);
@@ -318,7 +342,7 @@ public class ChatView
         
         // Add toolbar items instead of buttons
         modelDropdownItem = createModelSelectorComposite(actionToolBar);
-        planModeToolItem = createPlanModeToolItem( actionToolBar );
+        modeToolItem = createModeToolItem( actionToolBar );
         executePlanToolItem = createExecutePlanToolItem( actionToolBar );
         createAttachmentToolItem(actionToolBar);
         createReplayToolItem(actionToolBar);
@@ -326,8 +350,8 @@ public class ChatView
         createStopToolItem(actionToolBar);
         createSendToolItem(actionToolBar);
 
-        // Sets the initial weight ratio: 75% browser, 25% controls
         sashForm.setWeights( new int[] { 70, 30 } );
+        horizontalSash.setWeights( new int[] { 22, 78 } );
 
         // Enable DnD for the controls below the chat view
         dropManager.registerDropTarget( controls );
@@ -599,17 +623,40 @@ public class ChatView
                 + "```json\n" + ( details != null ? details : "" ) + "\n```";
     }
 
-    private ToolItem createPlanModeToolItem( ToolBar toolbar )
+    private ToolItem createModeToolItem( ToolBar toolbar )
     {
-        ToolItem item = new ToolItem( toolbar, SWT.CHECK );
-        item.setText( "Plan" );
-        item.setToolTipText( "Plan mode: first reply is a checklist without tools; then click Execute" );
+        ToolItem item = new ToolItem( toolbar, SWT.DROP_DOWN );
+        item.setText( "Agent" );
+        item.setToolTipText( "Interaction mode: Ask (read-only), Agent (edit), Plan (checklist first)" );
+        modeMenu = new Menu( toolbar.getShell(), SWT.POP_UP );
+        for ( AgentInteractionMode mode : AgentInteractionMode.values() )
+        {
+            MenuItem menuItem = new MenuItem( modeMenu, SWT.PUSH );
+            menuItem.setText( mode.name() );
+            AgentInteractionMode selected = mode;
+            menuItem.addSelectionListener( new SelectionAdapter()
+            {
+                @Override
+                public void widgetSelected( SelectionEvent e )
+                {
+                    item.setText( selected.name() );
+                    presenter.onInteractionModeSelected( selected );
+                }
+            } );
+        }
         item.addSelectionListener( new SelectionAdapter()
         {
             @Override
             public void widgetSelected( SelectionEvent e )
             {
-                presenter.onPlanModeToggled( item.getSelection() );
+                if ( ( e.detail & SWT.ARROW ) != 0 )
+                {
+                    org.eclipse.swt.graphics.Rectangle rect = item.getBounds();
+                    org.eclipse.swt.graphics.Point location = toolbar.toDisplay(
+                            new org.eclipse.swt.graphics.Point( rect.x, rect.y + rect.height ) );
+                    modeMenu.setLocation( location );
+                    modeMenu.setVisible( true );
+                }
             }
         } );
         return item;
@@ -632,12 +679,47 @@ public class ChatView
         return item;
     }
 
-    public void setPlanModeSelected( boolean selected )
+    public void setInteractionMode( AgentInteractionMode mode )
     {
         uiSync.asyncExec( () -> {
-            if ( planModeToolItem != null && !planModeToolItem.isDisposed() )
+            if ( modeToolItem != null && !modeToolItem.isDisposed() && mode != null )
             {
-                planModeToolItem.setSelection( selected );
+                modeToolItem.setText( mode.name() );
+            }
+            if ( executePlanToolItem != null && !executePlanToolItem.isDisposed()
+                    && mode != AgentInteractionMode.PLAN )
+            {
+                executePlanToolItem.setEnabled( false );
+            }
+        } );
+    }
+
+    public void setCapabilityWarning( String warning )
+    {
+        uiSync.asyncExec( () -> {
+            if ( capabilityBannerLabel == null || capabilityBannerLabel.isDisposed() )
+            {
+                return;
+            }
+            if ( warning == null || warning.isBlank() )
+            {
+                capabilityBannerLabel.setVisible( false );
+            }
+            else
+            {
+                capabilityBannerLabel.setText( warning );
+                capabilityBannerLabel.setVisible( true );
+            }
+            capabilityBannerLabel.getParent().layout( true, true );
+        } );
+    }
+
+    public void updateContextPanel( AgentContextSnapshot snapshot )
+    {
+        uiSync.asyncExec( () -> {
+            if ( agentContextPanel != null && !agentContextPanel.isDisposed() && snapshot != null )
+            {
+                agentContextPanel.update( snapshot );
             }
         } );
     }
@@ -1040,27 +1122,27 @@ public class ChatView
         Text inputArea = new Text( parent, SWT.BORDER | SWT.MULTI | SWT.WRAP | SWT.V_SCROLL );
         
         // Set a prompt message
-        inputArea.setMessage( "Type a message or question here... (Enter to send, Ctrl+Enter for new line)" );
+        inputArea.setMessage( "Message… (@File @Project @Selection). Ctrl+Enter to send, Enter for new line." );
 
         inputArea.addKeyListener( new KeyAdapter()
         {
             @Override
             public void keyPressed( KeyEvent e )
             {
-                if ( e.keyCode != SWT.CR )
+                if ( e.keyCode == SWT.CR && ( e.stateMask & SWT.CTRL ) != 0 )
                 {
+                    e.doit = false;
+                    String text = inputArea.getText().trim();
+                    if ( !text.isEmpty() )
+                    {
+                        presenter.onSendUserMessage( text );
+                    }
                     return;
                 }
-                if ( ( e.stateMask & SWT.CTRL ) != 0 )
+                if ( e.keyCode == SWT.CR && ( e.stateMask & SWT.SHIFT ) == 0 )
                 {
-                    // Ctrl+Enter: default behaviour inserts a new line in the multi-line field
+                    // Enter alone: new line in multi-line field
                     return;
-                }
-                e.doit = false;
-                String text = inputArea.getText().trim();
-                if ( !text.isEmpty() )
-                {
-                    presenter.onSendUserMessage( text );
                 }
             }
         } );
@@ -1408,11 +1490,21 @@ public class ChatView
             cacheAppendMessageForSelectedTab( messageId, "tool" );
             cacheUpdateMessageForSelectedTab( messageId, toPersistedToolMessage( toolName, status, details ) );
             appendMessageInBrowser( messageId, "tool" );
-            setToolCallMessageHtmlInBrowser( messageId, toolName, status, details );
+            setToolCallMessageHtmlInBrowser( messageId, toolName, status, details, List.of() );
         } );
     }
 
     public void updateToolCallMessage( String messageId, String toolName, String status, String details )
+    {
+        updateToolCallMessage( messageId, toolName, status, details, List.of() );
+    }
+
+    public void updateToolCallMessage(
+            String messageId,
+            String toolName,
+            String status,
+            String details,
+            List<String> openablePaths )
     {
         uiSync.asyncExec( () -> {
             if ( isDisposed() )
@@ -1420,7 +1512,7 @@ public class ChatView
                 return;
             }
             cacheUpdateMessageForSelectedTab( messageId, toPersistedToolMessage( toolName, status, details ) );
-            setToolCallMessageHtmlInBrowser( messageId, toolName, status, details );
+            setToolCallMessageHtmlInBrowser( messageId, toolName, status, details, openablePaths );
         } );
     }
 
@@ -1488,7 +1580,12 @@ public class ChatView
         } );
     }
 
-    private void setToolCallMessageHtmlInBrowser( String messageId, String toolName, String status, String details )
+    private void setToolCallMessageHtmlInBrowser(
+            String messageId,
+            String toolName,
+            String status,
+            String details,
+            List<String> openablePaths )
     {
         if ( browser == null || browser.isDisposed() )
         {
@@ -1497,18 +1594,47 @@ public class ChatView
         String escapedToolName = escapeHtml( safeText( toolName ) );
         String escapedStatus = escapeHtml( safeText( status ) );
         String escapedDetails = escapeHtml( safeText( details ) );
+        StringBuilder openLinks = new StringBuilder();
+        if ( openablePaths != null )
+        {
+            int shown = 0;
+            for ( String path : openablePaths )
+            {
+                if ( path == null || path.isBlank() || shown >= 3 )
+                {
+                    continue;
+                }
+                String escapedPath = escapeHtml( path );
+                String jsPath = path.replace( "\\", "\\\\" ).replace( "'", "\\'" );
+                openLinks.append( "<button type=\"button\" class=\"tool-open-path\" onclick=\"openResource('" )
+                        .append( jsPath )
+                        .append( "')\">Open ")
+                        .append( escapedPath )
+                        .append( "</button><br/>" );
+                shown++;
+            }
+        }
+        String prefHint = AgentToolCallFormatter.preferencePageHint( toolName );
+        String prefHtml = prefHint.isBlank()
+                ? ""
+                : "<div class=\"tool-call-pref\">" + escapeHtml( prefHint ) + "</div>";
         String html = """
                 <div class="tool-call-title">
                     <span class="tool-call-name">${toolName}</span>
                     <span class="tool-call-status">${status}</span>
                 </div>
+                ${openLinks}
+                ${prefHtml}
                 <details class="tool-call-details" open>
                     <summary>Tool details</summary>
                     <pre><code>${details}</code></pre>
                 </details>
-                """.replace( "${toolName}", escapedToolName )
-                   .replace( "${status}", escapedStatus )
-                   .replace( "${details}", escapedDetails );
+                """
+                .replace( "${toolName}", escapedToolName )
+                .replace( "${status}", escapedStatus )
+                .replace( "${details}", escapedDetails )
+                .replace( "${openLinks}", openLinks.toString() )
+                .replace( "${prefHtml}", prefHtml );
         String encodedHtml = java.util.Base64.getEncoder().encodeToString(
                 html.getBytes( java.nio.charset.StandardCharsets.UTF_8 ) );
         setInnerHtmlFromUtf8Base64( messageId, encodedHtml );
@@ -1593,7 +1719,7 @@ public class ChatView
             setMessageHtmlInBrowser( messageId, content );
             return;
         }
-        setToolCallMessageHtmlInBrowser( messageId, toolName, status, details );
+        setToolCallMessageHtmlInBrowser( messageId, toolName, status, details, List.of() );
     }
 
     private String extractBetween( String text, String prefix, String suffix )
@@ -2052,6 +2178,24 @@ public class ChatView
             {
                 String codeBlock = (String) arguments[0];
                 presenter.onCopyCode( codeBlock );
+            }
+            return null;
+        }
+    }
+
+    private class OpenResourceBrowserFunction extends BrowserFunction
+    {
+        public OpenResourceBrowserFunction( Browser browser, String name )
+        {
+            super( browser, name );
+        }
+
+        @Override
+        public Object function( Object[] arguments )
+        {
+            if ( arguments.length > 0 && arguments[0] instanceof String path )
+            {
+                presenter.onOpenWorkspacePath( path );
             }
             return null;
         }

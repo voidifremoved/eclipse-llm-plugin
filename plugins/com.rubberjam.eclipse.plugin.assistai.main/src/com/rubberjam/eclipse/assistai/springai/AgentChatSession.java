@@ -247,10 +247,15 @@ public class AgentChatSession
                 .defaultSystem( systemPrompt );
         if ( currentModel.functionCalling() && currentSendOptions.isToolsEnabled() )
         {
+            java.util.Set<String> allowedTools = currentSendOptions.getAllowedToolsOverride();
+            if ( allowedTools == null )
+            {
+                allowedTools = agentToolPolicy.resolveAllowedToolNames();
+            }
             ConversationContext toolContext = ConversationContext.builder()
                     .contextId( "agent-" + sessionId )
                     .conversation( new Conversation() )
-                    .allowedTools( agentToolPolicy.resolveAllowedToolNames() )
+                    .allowedTools( allowedTools )
                     .build();
             builder.defaultToolCallbacks( toolBridge.getToolCallbacks( toolContext, toolCallEventListener ) );
         }

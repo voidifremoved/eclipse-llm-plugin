@@ -46,6 +46,8 @@ public class AgentSessionManager
 
     private final Map<String, String> tabDraftTexts = new LinkedHashMap<>();
 
+    private final Map<String, AgentInteractionMode> tabInteractionModes = new LinkedHashMap<>();
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private String activeTabId;
@@ -61,9 +63,27 @@ public class AgentSessionManager
         tabTitles.put( tabId, "New Agent" );
         tabModelUids.put( tabId, modelUid );
         tabDraftTexts.put( tabId, "" );
+        tabInteractionModes.put( tabId, AgentInteractionMode.AGENT );
         activeTabId = tabId;
         persistTabs();
         return tabId;
+    }
+
+    public AgentInteractionMode getTabInteractionMode( String tabId )
+    {
+        ensureLoaded();
+        return tabInteractionModes.getOrDefault( tabId, AgentInteractionMode.AGENT );
+    }
+
+    public void setTabInteractionMode( String tabId, AgentInteractionMode mode )
+    {
+        ensureLoaded();
+        if ( tabId == null || mode == null )
+        {
+            return;
+        }
+        tabInteractionModes.put( tabId, mode );
+        persistTabs();
     }
 
     public List<String> getTabIds()
@@ -117,6 +137,7 @@ public class AgentSessionManager
         tabTitles.remove( tabId );
         tabModelUids.remove( tabId );
         tabDraftTexts.remove( tabId );
+        tabInteractionModes.remove( tabId );
         if ( tabId.equals( activeTabId ) )
         {
             activeTabId = sessions.isEmpty() ? null : sessions.keySet().iterator().next();
@@ -236,13 +257,15 @@ public class AgentSessionManager
             List<AgentMessageSnapshot> messages = session != null
                     ? session.snapshotMessages()
                     : Collections.emptyList();
+            AgentInteractionMode mode = tabInteractionModes.getOrDefault( tabId, AgentInteractionMode.AGENT );
             descriptors.add( new AgentTabDescriptor(
                     tabId,
                     tabTitles.getOrDefault( tabId, "New Agent" ),
                     tabModelUids.getOrDefault( tabId, getDefaultModelUid() ),
                     tabDraftTexts.getOrDefault( tabId, "" ),
                     tabId.equals( activeTabId ),
-                    messages ) );
+                    messages,
+                    mode.name() ) );
         }
         try
         {
@@ -357,6 +380,9 @@ public class AgentSessionManager
                 tabTitles.put( descriptor.tabId(), descriptor.title() != null ? descriptor.title() : "New Agent" );
                 tabModelUids.put( descriptor.tabId(), descriptor.modelUid() != null ? descriptor.modelUid() : getDefaultModelUid() );
                 tabDraftTexts.put( descriptor.tabId(), descriptor.draftText() != null ? descriptor.draftText() : "" );
+                tabInteractionModes.put(
+                        descriptor.tabId(),
+                        AgentInteractionMode.fromPersisted( descriptor.interactionMode() ) );
                 if ( descriptor.active() )
                 {
                     activeTabId = descriptor.tabId();

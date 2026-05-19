@@ -69,6 +69,17 @@ li {
   margin-top: 6px;
 }
 
+.tool-call-pref {
+    font-size: 0.85em;
+    opacity: 0.85;
+    margin: 4px 0;
+}
+
+.tool-open-path {
+    margin: 2px 4px 2px 0;
+    font-size: 0.85em;
+}
+
 .tool-call-details pre {
   margin-top: 6px;
   max-height: 220px;

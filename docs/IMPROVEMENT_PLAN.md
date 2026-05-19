@@ -102,7 +102,7 @@ Step-by-step roadmap based on the current plugin codebase (May 2026). Use this a
 
 ---
 
-### Phase 3 — UI/UX improvements (2–3 weeks, parallel with Phase 2)
+### Phase 3 — UI/UX improvements (2–3 weeks, parallel with Phase 2) ✅ Completed
 
 **Goal:** Agent view feels intentional, not “chat with hidden tools”.
 
@@ -194,4 +194,4 @@ If time is limited, implement in this order:
 
 ---
 
-*Last updated: 2026-05-19 — Phases 0–2 complete: workspace-first tools, plan mode + task checklist UI, post-edit compile verification, max tool rounds.*
+*Last updated: 2026-05-19 — Phases 0–3 complete: Ask/Agent/Plan modes, context panel, tool-call UX, model capability banner, @mentions, agent commands.*

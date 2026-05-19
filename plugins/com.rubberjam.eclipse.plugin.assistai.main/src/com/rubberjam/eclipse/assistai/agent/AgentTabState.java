@@ -40,7 +40,7 @@ public class AgentTabState
 
     final Map<String, String> toolNames = new HashMap<>();
 
-    boolean planModeEnabled;
+    AgentInteractionMode interactionMode = AgentInteractionMode.AGENT;
 
     boolean awaitingPlanExecution;
 
@@ -49,4 +49,6 @@ public class AgentTabState
     int toolRoundCount;
 
     final List<AgentTaskItem> taskItems = new ArrayList<>();
+
+    final Map<String, Long> toolStartTimes = new HashMap<>();
 }

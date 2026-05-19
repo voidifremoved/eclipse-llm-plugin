@@ -116,6 +116,26 @@ public class AgentToolPolicy
     /**
      * Full Spring AI tool names ({@code server__tool}) allowed for the agent.
      */
+    /**
+     * Read-only tools for Ask mode (eclipse-ide, eclipse-context, memory recall/think).
+     */
+    public Set<String> resolveAskModeAllowedToolNames()
+    {
+        Set<String> allowed = new HashSet<>();
+        for ( String name : resolveAllowedToolNames() )
+        {
+            if ( name.startsWith( "eclipse-ide__" ) || name.startsWith( "eclipse-context__" ) )
+            {
+                allowed.add( name );
+            }
+            else if ( "memory__think".equals( name ) || "memory__recall".equals( name ) )
+            {
+                allowed.add( name );
+            }
+        }
+        return Set.copyOf( allowed );
+    }
+
     public Set<String> resolveAllowedToolNames()
     {
         Set<String> allowed = new HashSet<>();

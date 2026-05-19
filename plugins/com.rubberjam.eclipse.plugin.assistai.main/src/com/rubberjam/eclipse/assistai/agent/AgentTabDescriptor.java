@@ -9,8 +9,20 @@ public record AgentTabDescriptor(
         String modelUid,
         String draftText,
         boolean active,
-        List<AgentMessageSnapshot> messages )
+        List<AgentMessageSnapshot> messages,
+        String interactionMode )
 {
+    public AgentTabDescriptor(
+            String tabId,
+            String title,
+            String modelUid,
+            String draftText,
+            boolean active,
+            List<AgentMessageSnapshot> messages )
+    {
+        this( tabId, title, modelUid, draftText, active, messages, AgentInteractionMode.AGENT.name() );
+    }
+
     public AgentTabDescriptor
     {
         if ( messages == null )
@@ -20,6 +32,10 @@ public record AgentTabDescriptor(
         if ( draftText == null )
         {
             draftText = "";
+        }
+        if ( interactionMode == null || interactionMode.isBlank() )
+        {
+            interactionMode = AgentInteractionMode.AGENT.name();
         }
     }
 }

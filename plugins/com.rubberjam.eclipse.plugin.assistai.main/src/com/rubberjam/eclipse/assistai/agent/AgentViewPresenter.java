@@ -34,8 +34,14 @@ import com.rubberjam.eclipse.assistai.chat.ChatMessage;
 import com.rubberjam.eclipse.assistai.prompt.ChatMessageFactory;
 import com.rubberjam.eclipse.assistai.prompt.PromptContextValueProvider;
 import com.rubberjam.eclipse.assistai.prompt.PromptRepository;
+import com.rubberjam.eclipse.assistai.resources.CachedResource;
 import com.rubberjam.eclipse.assistai.resources.IResourceCacheListener;
+import com.rubberjam.eclipse.assistai.resources.ResourceCache;
 import com.rubberjam.eclipse.assistai.resources.ResourceCacheEvent;
+import com.rubberjam.eclipse.assistai.view.dnd.handlers.ResourceCacheHelper;
+import org.eclipse.core.resources.IFile;
+import org.eclipse.jface.viewers.IStructuredSelection;
+import org.eclipse.ui.ide.IDE;
 import com.rubberjam.eclipse.assistai.view.ChatView;
 import com.rubberjam.eclipse.assistai.view.PartAccessor;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
@@ -74,6 +80,10 @@ public class AgentViewPresenter implements IResourceCacheListener
 
     @Inject private AgentCompilationErrorScope compilationErrorScope;
 
+    @Inject private ResourceCache resourceCache;
+
+    @Inject private ResourceCacheHelper resourceCacheHelper;
+
     private final Map<String, AgentTabState> tabStates = new HashMap<>();
 
     private ChatView registeredView;
@@ -93,24 +103,27 @@ public class AgentViewPresenter implements IResourceCacheListener
         onSendUserMessage( text, attachments, null );
     }
 
-    public void onPlanModeToggled( boolean enabled )
+    public void onInteractionModeSelected( AgentInteractionMode mode )
     {
         AgentSessionManager sessionManager = sessionManagerProvider.get();
         String tabId = sessionManager.getActiveTabId();
-        if ( tabId == null )
+        if ( tabId == null || mode == null )
         {
             return;
         }
         AgentTabState tabState = getTabState( tabId );
-        tabState.planModeEnabled = enabled;
-        if ( !enabled )
+        tabState.interactionMode = mode;
+        sessionManager.setTabInteractionMode( tabId, mode );
+        if ( mode != AgentInteractionMode.PLAN )
         {
             tabState.awaitingPlanExecution = false;
         }
-        applyToView( view -> {
-            view.setPlanModeSelected( enabled );
-            view.setExecutePlanEnabled( tabState.awaitingPlanExecution );
-        } );
+        syncModeToView( tabState );
+    }
+
+    public void onPlanModeToggled( boolean enabled )
+    {
+        onInteractionModeSelected( enabled ? AgentInteractionMode.PLAN : AgentInteractionMode.AGENT );
     }
 
     public void onExecutePlan()
@@ -128,11 +141,9 @@ public class AgentViewPresenter implements IResourceCacheListener
             return;
         }
         tabState.awaitingPlanExecution = false;
-        tabState.planModeEnabled = false;
-        applyToView( view -> {
-            view.setPlanModeSelected( false );
-            view.setExecutePlanEnabled( false );
-        } );
+        tabState.interactionMode = AgentInteractionMode.AGENT;
+        sessionManager.setTabInteractionMode( tabId, AgentInteractionMode.AGENT );
+        syncModeToView( tabState );
         onSendUserMessage(
                 "Execute the approved plan below using workspace MCP tools. Work through each checklist item.",
                 null,
@@ -186,7 +197,7 @@ public class AgentViewPresenter implements IResourceCacheListener
             AgentSendOptions options = resolveSendOptions( tabState, sendOptions );
             sessionManager.refreshSystemPromptForSend( session, options );
             applyCompilationErrorScope( text );
-            String userText = enrichWithActiveEditorContext( text );
+            String userText = enrichWithActiveEditorContext( expandMentions( text ) );
             tabState.toolRoundCount = 0;
             String userMessageId = UUID.randomUUID().toString();
             updateTabTitle( tabId, userText );
@@ -428,6 +439,11 @@ public class AgentViewPresenter implements IResourceCacheListener
     public void registerChatView( ChatView view )
     {
         registeredView = view;
+        if ( resourceCache != null )
+        {
+            resourceCache.addCacheListener( this );
+        }
+        refreshContextPanel();
     }
 
     public void onChatViewCreated()
@@ -464,6 +480,8 @@ public class AgentViewPresenter implements IResourceCacheListener
         AgentSessionManager sessionManager = sessionManagerProvider.get();
         String tabId = sessionManager.createTab();
         AgentTabState tabState = getTabState( tabId );
+        tabState.interactionMode = AgentInteractionMode.AGENT;
+        sessionManager.setTabInteractionMode( tabId, AgentInteractionMode.AGENT );
         tabState.attachments.clear();
         applyToView( v -> {
             v.addAgentTab( tabId, sessionManager.getTabTitle( tabId ) );
@@ -474,6 +492,7 @@ public class AgentViewPresenter implements IResourceCacheListener
             v.setUserInputText( tabState.draftText );
             v.setAttachments( tabState.attachments );
             v.setInputEnabled( true );
+            v.setInteractionMode( tabState.interactionMode );
         } );
         initializeAvailableModels();
     }
@@ -528,6 +547,7 @@ public class AgentViewPresenter implements IResourceCacheListener
         }
         sessionManager.setActiveTab( tabId );
         AgentTabState tabState = getTabState( tabId );
+        tabState.interactionMode = sessionManager.getTabInteractionMode( tabId );
         tabState.draftText = sessionManager.getTabDraftText( tabId );
         AgentSession session = sessionManager.getSession( tabId );
         List<ChatMessage> renderHistory = getRenderableHistory( tabId, session );
@@ -548,16 +568,18 @@ public class AgentViewPresenter implements IResourceCacheListener
             v.setUserInputText( tabState.draftText );
             v.setAttachments( new ArrayList<>( tabState.attachments ) );
             v.setInputEnabled( !tabState.generating );
-            v.setPlanModeSelected( tabState.planModeEnabled );
+            v.setInteractionMode( tabState.interactionMode );
             v.setExecutePlanEnabled( tabState.awaitingPlanExecution );
             refreshTaskPanel( tabState );
+            refreshContextPanel();
         } );
         initializeAvailableModels();
     }
 
     @Override
-    public void cacheChanged(ResourceCacheEvent event) {
-        // Ignored for now
+    public void cacheChanged( ResourceCacheEvent event )
+    {
+        refreshContextPanel();
     }
 
     private void applyToView( java.util.function.Consumer<ChatView> action )
@@ -788,6 +810,7 @@ public class AgentViewPresenter implements IResourceCacheListener
                 updateAgentActivity( tabState, tabId, "Thinking..." );
                 return;
             }
+            tabState.toolStartTimes.put( event.id(), Long.valueOf( System.currentTimeMillis() ) );
             tabState.toolRoundCount++;
             int maxRounds = agentToolPolicy.getMaxToolRounds();
             if ( tabState.toolRoundCount > maxRounds )
@@ -824,12 +847,13 @@ public class AgentViewPresenter implements IResourceCacheListener
             }
             if ( tabId.equals( sessionManager.getActiveTabId() ) )
             {
+                String input = AgentToolCallFormatter.truncateDetails( event.input() );
                 applyToView( view -> {
                     view.appendToolCallMessage(
                             messageId,
                             event.toolName(),
                             "Running",
-                            event.input() );
+                            input );
                     if ( tabState.pendingAssistantMessageId != null )
                     {
                         view.moveMessageToEnd( tabState.pendingAssistantMessageId );
@@ -857,7 +881,17 @@ public class AgentViewPresenter implements IResourceCacheListener
             return;
         }
         String status = event.status() == ToolCallStatus.FINISHED ? "Finished" : "Failed";
-        String details = event.output() != null ? event.output() : "";
+        Long started = tabState.toolStartTimes.remove( event.id() );
+        String duration = started != null
+                ? AgentToolCallFormatter.formatDuration( started.longValue(), System.currentTimeMillis() )
+                : "";
+        if ( !duration.isBlank() )
+        {
+            status = status + " (" + duration + ")";
+        }
+        String localStatus = status;
+        String details = AgentToolCallFormatter.truncateDetails(
+                event.output() != null ? event.output() : "" );
         updateCachedMessageContent( tabState, messageId, toPersistedToolMessage( event.toolName(), status, details ) );
         AgentSession session = sessionManager.getSession( tabId );
         if ( session != null )
@@ -869,12 +903,19 @@ public class AgentViewPresenter implements IResourceCacheListener
         }
         if ( tabId.equals( sessionManager.getActiveTabId() ) )
         {
+            List<String> paths = AgentToolCallFormatter.extractOpenablePaths( details );
             applyToView( view -> view.updateToolCallMessage(
                     messageId,
                     event.toolName(),
-                    status,
-                    details ) );
+                    localStatus,
+                    details,
+                    paths ) );
         }
+    }
+
+    public void focusAgentView()
+    {
+        partAccessor.findMessageView().ifPresent( ChatView::setFocus );
     }
 
     private String toPersistedToolMessage( String toolName, String status, String details )
@@ -950,17 +991,128 @@ public class AgentViewPresenter implements IResourceCacheListener
         compilationErrorScope.set( new AgentCompilationErrorScope.Scope( project, path ) );
     }
 
-    private static AgentSendOptions resolveSendOptions( AgentTabState tabState, AgentSendOptions explicit )
+    private AgentSendOptions resolveSendOptions( AgentTabState tabState, AgentSendOptions explicit )
     {
         if ( explicit != null )
         {
             return explicit;
         }
-        if ( tabState.planModeEnabled && !tabState.awaitingPlanExecution )
+        if ( tabState.interactionMode == AgentInteractionMode.PLAN && !tabState.awaitingPlanExecution )
         {
             return AgentSendOptions.PLAN_ONLY;
         }
+        if ( tabState.interactionMode == AgentInteractionMode.ASK )
+        {
+            return AgentSendOptions.askMode( agentToolPolicy.resolveAskModeAllowedToolNames() );
+        }
         return AgentSendOptions.DEFAULT;
+    }
+
+    private void syncModeToView( AgentTabState tabState )
+    {
+        applyToView( view -> {
+            view.setInteractionMode( tabState.interactionMode );
+            view.setExecutePlanEnabled( tabState.awaitingPlanExecution );
+        } );
+    }
+
+    public void refreshContextPanel()
+    {
+        AgentContextSnapshot snapshot = buildContextSnapshot();
+        applyToView( view -> view.updateContextPanel( snapshot ) );
+    }
+
+    private AgentContextSnapshot buildContextSnapshot()
+    {
+        String project = promptContext.getContextValue( "currentProjectName" );
+        String path = promptContext.getContextValue( "currentFilePath" );
+        String name = promptContext.getContextValue( "currentFileName" );
+        String selection = promptContext.getContextValue( "selectedContent" );
+        List<String> labels = new ArrayList<>();
+        if ( resourceCache != null )
+        {
+            for ( CachedResource cached : resourceCache.getAll().values() )
+            {
+                labels.add( cached.descriptor().uri().toString() );
+            }
+        }
+        return new AgentContextSnapshot( project, path, name, selection, labels );
+    }
+
+    public void onAddEditorSelectionToCache()
+    {
+        IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow() != null
+                ? PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage()
+                : null;
+        if ( page == null || page.getSelection() == null )
+        {
+            return;
+        }
+        if ( page.getSelection() instanceof IStructuredSelection structured )
+        {
+            Object element = structured.getFirstElement();
+            if ( element instanceof IFile file )
+            {
+                resourceCacheHelper.addWorkspaceFile( file );
+            }
+        }
+        refreshContextPanel();
+    }
+
+    public void onOpenWorkspacePath( String workspacePath )
+    {
+        if ( workspacePath == null || workspacePath.isBlank() )
+        {
+            return;
+        }
+        uiSync.asyncExec( () -> {
+            try
+            {
+                IPath path = org.eclipse.core.runtime.Path.fromOSString( workspacePath );
+                IFile file = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getFile( path );
+                if ( file.exists() )
+                {
+                    IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
+                    IDE.openEditor( page, file );
+                }
+            }
+            catch ( Exception e )
+            {
+                logger.error( "Failed to open path from tool result", e );
+            }
+        } );
+    }
+
+    private String expandMentions( String text )
+    {
+        if ( text == null || text.isBlank() )
+        {
+            return text;
+        }
+        String result = text;
+        if ( result.contains( "@File" ) )
+        {
+            String path = promptContext.getContextValue( "currentFilePath" );
+            String project = promptContext.getContextValue( "currentProjectName" );
+            result = result.replace( "@File", "[@File " + project + "/" + path + "]" );
+        }
+        if ( result.contains( "@Project" ) )
+        {
+            result = result.replace( "@Project", "[@Project " + promptContext.getContextValue( "currentProjectName" ) + "]" );
+        }
+        if ( result.contains( "@Selection" ) )
+        {
+            String sel = promptContext.getContextValue( "selectedContent" );
+            if ( sel == null || sel.isBlank() )
+            {
+                result = result.replace( "@Selection", "[@Selection (empty)]" );
+            }
+            else
+            {
+                result = result.replace( "@Selection", "[@Selection]\n" + sel );
+            }
+        }
+        return result;
     }
 
     private void refreshTaskPanel( AgentTabState tabState )
@@ -1206,6 +1358,7 @@ public class AgentViewPresenter implements IResourceCacheListener
     public void onViewVisible()
     {
         refreshViewState();
+        refreshContextPanel();
     }
 
     private void refreshViewState()
@@ -1223,7 +1376,14 @@ public class AgentViewPresenter implements IResourceCacheListener
                 : modelRepository.getChatModelInUse();
         List<ModelApiDescriptor> models = modelRepository.listModelApiDescriptors();
         String selectedId = selectedModel != null ? selectedModel.uid() : "";
-        applyToView( view -> view.setAvailableModels( models, selectedId ) );
+        boolean toolsSupported = selectedModel == null || selectedModel.functionCalling();
+        String capabilityWarning = toolsSupported
+                ? null
+                : "Tools are disabled for this model. Use Ask mode for Q&A or select a model with function calling.";
+        applyToView( view -> {
+            view.setAvailableModels( models, selectedId );
+            view.setCapabilityWarning( capabilityWarning );
+        } );
     }
 
     private void updateAutocomplete()
