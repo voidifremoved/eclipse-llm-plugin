@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 
 import com.rubberjam.eclipse.assistai.springai.AssistAiMcpToolNames;
@@ -22,6 +23,8 @@ public class ConversationContext
     private final Set<String> allowedTools;
     private final BiConsumer<FunctionCall, CallToolResult> onFunctionResult;
     private final Runnable onConversationContinue;
+    private final int maxToolCalls;
+    private final AtomicInteger toolCallCount = new AtomicInteger();
     
     private ConversationContext(Builder builder)
     {
@@ -30,6 +33,7 @@ public class ConversationContext
         this.allowedTools = builder.allowedTools != null ? Set.copyOf(builder.allowedTools) : null;
         this.onFunctionResult = builder.onFunctionResult;
         this.onConversationContinue = builder.onConversationContinue;
+        this.maxToolCalls = builder.maxToolCalls;
     }
     
     /**
@@ -78,6 +82,25 @@ public class ConversationContext
     public Set<String> getAllowedTools()
     {
         return allowedTools != null ? Collections.unmodifiableSet(allowedTools) : null;
+    }
+
+    public int getMaxToolCalls()
+    {
+        return maxToolCalls;
+    }
+
+    public int getToolCallCount()
+    {
+        return toolCallCount.get();
+    }
+
+    public boolean tryReserveToolCall()
+    {
+        if ( maxToolCalls < 1 )
+        {
+            return true;
+        }
+        return toolCallCount.incrementAndGet() <= maxToolCalls;
     }
     
     /**
@@ -128,6 +151,7 @@ public class ConversationContext
         private Set<String> allowedTools;
         private BiConsumer<FunctionCall, CallToolResult> onFunctionResult;
         private Runnable onConversationContinue;
+        private int maxToolCalls;
         
         /**
          * Sets the context ID. If not set, a random UUID will be generated.
@@ -154,6 +178,16 @@ public class ConversationContext
         public Builder allowedTools(Set<String> tools)
         {
             this.allowedTools = tools;
+            return this;
+        }
+
+        /**
+         * Sets the maximum number of tool calls allowed for one agent turn.
+         * A value less than 1 means unlimited.
+         */
+        public Builder maxToolCalls( int maxToolCalls )
+        {
+            this.maxToolCalls = maxToolCalls;
             return this;
         }
         
@@ -189,6 +223,7 @@ public class ConversationContext
     {
         return "ConversationContext[id=" + contextId + 
                ", messageCount=" + conversation.size() + 
-               ", hasToolRestrictions=" + (allowedTools != null) + "]";
+               ", hasToolRestrictions=" + (allowedTools != null) +
+               ", maxToolCalls=" + maxToolCalls + "]";
     }
 }

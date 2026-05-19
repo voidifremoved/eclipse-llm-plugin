@@ -114,9 +114,6 @@ public class AgentToolPolicy
     }
 
     /**
-     * Full Spring AI tool names ({@code server__tool}) allowed for the agent.
-     */
-    /**
      * Read-only tools for Ask mode (eclipse-ide, eclipse-context, memory recall/think).
      */
     public Set<String> resolveAskModeAllowedToolNames()
@@ -139,19 +136,9 @@ public class AgentToolPolicy
     public Set<String> resolveAllowedToolNames()
     {
         Set<String> allowed = new HashSet<>();
-        boolean allowWeb = isAllowWebTools();
         for ( McpServerDescriptor server : mcpServerRepository.listStoredServers() )
         {
-            if ( !server.enabled() )
-            {
-                continue;
-            }
-            AgentToolTier tier = tierForServer( server.name(), server.builtIn() );
-            if ( tier == AgentToolTier.WEB && !allowWeb )
-            {
-                continue;
-            }
-            if ( tier == AgentToolTier.UTILITY && !AGENT_UTILITY_SERVER_NAMES.contains( server.name() ) )
+            if ( !isServerAllowedForAgent( server ) )
             {
                 continue;
             }
@@ -165,6 +152,24 @@ public class AgentToolPolicy
             }
         }
         return Set.copyOf( allowed );
+    }
+
+    public boolean isServerAllowedForAgent( McpServerDescriptor server )
+    {
+        if ( server == null || !server.enabled() )
+        {
+            return false;
+        }
+        AgentToolTier tier = tierForServer( server.name(), server.builtIn() );
+        if ( tier == AgentToolTier.WEB )
+        {
+            return isAllowWebTools();
+        }
+        if ( tier == AgentToolTier.UTILITY )
+        {
+            return AGENT_UTILITY_SERVER_NAMES.contains( server.name() );
+        }
+        return true;
     }
 
     /**

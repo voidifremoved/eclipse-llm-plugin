@@ -400,6 +400,7 @@ public class AgentSessionManager
             tabTitles.clear();
             tabModelUids.clear();
             tabDraftTexts.clear();
+            tabInteractionModes.clear();
             activeTabId = null;
             repaired = true;
         }
@@ -427,6 +428,7 @@ public class AgentSessionManager
         tabTitles.put( tabId, "New Agent" );
         tabModelUids.put( tabId, modelUid );
         tabDraftTexts.put( tabId, "" );
+        tabInteractionModes.put( tabId, AgentInteractionMode.AGENT );
         activeTabId = tabId;
     }
 

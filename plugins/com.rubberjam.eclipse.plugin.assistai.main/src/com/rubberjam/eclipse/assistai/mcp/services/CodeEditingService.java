@@ -2229,6 +2229,8 @@ public class CodeEditingService
             
             // Backup the file before modification
             backupFile(file);
+
+            String diff = generateCodeDiff(projectName, filePath, content, 3);
             
             // Replace the file content
             byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
@@ -2245,7 +2247,8 @@ public class CodeEditingService
                 revealLineInEditor(file, 1);
             });
             
-            return "Success: Content of file '" + filePath + "' replaced in project '" + projectName + "'.";
+            return "Success: Content of file '" + filePath + "' replaced in project '" + projectName + "'.\n" +
+                    "Changes:\n```diff\n" + diff + "\n```";
         } 
         catch (CoreException e) 
         {
@@ -2331,6 +2334,8 @@ public class CodeEditingService
                     }
                 }
             }
+
+            String diff = generateCodeDiff(projectName, filePath, newContent.toString(), 3);
             
             // Write the new content back to the file
             byte[] bytes = newContent.toString().getBytes(StandardCharsets.UTF_8);
@@ -2349,7 +2354,8 @@ public class CodeEditingService
             });
             
             int deletedCount = endLine - startLine + 1;
-            return "Success: Deleted " + deletedCount + " line(s) (lines " + startLine + " to " + endLine + ") from file '" + filePath + "' in project '" + projectName + "'.";
+            return "Success: Deleted " + deletedCount + " line(s) (lines " + startLine + " to " + endLine + ") from file '" + filePath + "' in project '" + projectName + "'.\n" +
+                    "Changes:\n```diff\n" + diff + "\n```";
         } 
         catch (CoreException | IOException e) 
         {

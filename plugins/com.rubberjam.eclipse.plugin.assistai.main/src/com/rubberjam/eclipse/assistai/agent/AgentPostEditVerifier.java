@@ -52,7 +52,7 @@ public final class AgentPostEditVerifier
         {
             return "";
         }
-        String project = contextValues.getContextValue( "currentProjectName" );
+        String project = contextValues.getContextValue( PromptContextValueProvider.CURRENT_PROJECT_NAME );
         if ( project == null || project.isBlank() )
         {
             return "\n\n---\n**Compile check:** (no active project)\n";
@@ -64,7 +64,7 @@ public final class AgentPostEditVerifier
         }
         if ( filePath == null || filePath.isBlank() )
         {
-            filePath = contextValues.getContextValue( "currentFilePath" );
+            filePath = contextValues.getContextValue( PromptContextValueProvider.CURRENT_FILE_PATH );
         }
         StringBuilder argsJson = new StringBuilder();
         argsJson.append( "{ \"projectName\": \"" ).append( escapeJson( project ) ).append( "\"" );

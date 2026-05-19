@@ -1,15 +1,16 @@
 package com.rubberjam.eclipse.assistai.agent;
 
+import java.util.List;
+
 import org.eclipse.e4.core.di.annotations.Creatable;
 
 import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor;
 import com.rubberjam.eclipse.assistai.mcp.McpServerRepository;
 import com.rubberjam.eclipse.assistai.prompt.PromptLoader;
 import com.rubberjam.eclipse.assistai.prompt.PromptContextValueProvider;
-import com.rubberjam.eclipse.assistai.prompt.PromptRepository;
-import com.rubberjam.eclipse.assistai.prompt.Prompts;
 import com.rubberjam.eclipse.assistai.resources.ResourceCache;
 import com.rubberjam.eclipse.assistai.resources.CachedResource;
+import com.rubberjam.eclipse.assistai.springai.AssistAiMcpToolNames;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -18,9 +19,6 @@ import jakarta.inject.Singleton;
 @Singleton
 public class AgentSystemPromptBuilder
 {
-    @Inject
-    private PromptRepository promptRepository;
-
     @Inject
     private ResourceCache resourceCache;
 
@@ -72,10 +70,10 @@ public class AgentSystemPromptBuilder
     {
         StringBuilder ctx = new StringBuilder();
         ctx.append( "\n=== Current Eclipse workspace ===\n" );
-        String project = contextValues.getContextValue( "currentProjectName" );
-        String file = contextValues.getContextValue( "currentFileName" );
-        String path = contextValues.getContextValue( "currentFilePath" );
-        String selection = contextValues.getContextValue( "selectedContent" );
+        String project = contextValues.getContextValue( PromptContextValueProvider.CURRENT_PROJECT_NAME );
+        String file = contextValues.getContextValue( PromptContextValueProvider.CURRENT_FILE_NAME );
+        String path = contextValues.getContextValue( PromptContextValueProvider.CURRENT_FILE_PATH );
+        String selection = contextValues.getContextValue( PromptContextValueProvider.SELECTED_CONTENT );
         if ( project != null && !project.isBlank() )
         {
             ctx.append( "Active project: " ).append( project ).append( '\n' );
@@ -102,6 +100,7 @@ public class AgentSystemPromptBuilder
             ctx.append( "Editor selection:\n" ).append( selection ).append( '\n' );
         }
         ctx.append( "Inspect or change code with workspace MCP tools before relying on chat history.\n" );
+        ctx.append( "Current file content is not inlined; use readProjectResource/getClassOutline/getMethodSource when needed.\n" );
         ctx.append( "===========================\n" );
         return ctx.toString();
     }
@@ -123,9 +122,9 @@ public class AgentSystemPromptBuilder
         }
         appendTierSection( ctx, "User-defined servers", AgentToolTier.USER );
 
-        if ( !hasAnyEnabledServer() )
+        if ( !hasAnyAgentServer() )
         {
-            ctx.append( "(No MCP servers are enabled in Assist Agent preferences.)\n" );
+            ctx.append( "(No MCP servers are enabled for the agent policy.)\n" );
         }
         ctx.append( "===========================\n" );
         return ctx.toString();
@@ -145,11 +144,7 @@ public class AgentSystemPromptBuilder
             {
                 continue;
             }
-            if ( tier == AgentToolTier.WEB && !agentToolPolicy.isAllowWebTools() )
-            {
-                continue;
-            }
-            if ( tier == AgentToolTier.UTILITY && !"memory".equals( server.name() ) )
+            if ( !agentToolPolicy.isServerAllowedForAgent( server ) )
             {
                 continue;
             }
@@ -159,6 +154,7 @@ public class AgentSystemPromptBuilder
             {
                 lines.append( " (built-in)" );
             }
+            appendAllowedToolNames( lines, server );
             lines.append( '\n' );
         }
         if ( any )
@@ -168,11 +164,34 @@ public class AgentSystemPromptBuilder
         }
     }
 
-    private boolean hasAnyEnabledServer()
+    private void appendAllowedToolNames( StringBuilder lines, McpServerDescriptor server )
+    {
+        List<String> tools = mcpServerRepository.listToolsForServer( server.name() );
+        boolean first = true;
+        for ( String tool : tools )
+        {
+            if ( server.excludedTools().contains( tool ) )
+            {
+                continue;
+            }
+            if ( first )
+            {
+                lines.append( ": " );
+                first = false;
+            }
+            else
+            {
+                lines.append( ", " );
+            }
+            lines.append( AssistAiMcpToolNames.prefixed( server.name(), tool ) );
+        }
+    }
+
+    private boolean hasAnyAgentServer()
     {
         for ( McpServerDescriptor server : mcpServerRepository.listStoredServers() )
         {
-            if ( server.enabled() )
+            if ( agentToolPolicy.isServerAllowedForAgent( server ) )
             {
                 return true;
             }

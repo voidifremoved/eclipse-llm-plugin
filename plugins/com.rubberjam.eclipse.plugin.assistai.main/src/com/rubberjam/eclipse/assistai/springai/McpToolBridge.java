@@ -26,7 +26,6 @@ import jakarta.inject.Singleton;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
-import org.springframework.ai.tool.definition.DefaultToolDefinition;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.DefaultToolMetadata;
 import org.springframework.ai.tool.metadata.ToolMetadata;
@@ -99,6 +98,7 @@ public class McpToolBridge
             }
             wrapped.add( new ObservableToolCallback(
                     callback,
+                    context,
                     listener,
                     toolInvocationExecutor,
                     builtinToolRouter,
@@ -136,9 +136,11 @@ public class McpToolBridge
             {
                 continue;
             }
-            ToolCallback fallback = new BuiltinOnlyToolCallback( allowedName );
+            ToolCallback fallback = new BuiltinOnlyToolCallback(
+                    builtinToolRouter.getToolDefinition( allowedName ).orElseThrow() );
             wrapped.add( new ObservableToolCallback(
                     fallback,
+                    context,
                     listener,
                     toolInvocationExecutor,
                     builtinToolRouter,
@@ -151,13 +153,9 @@ public class McpToolBridge
     {
         private final ToolDefinition definition;
 
-        BuiltinOnlyToolCallback( String toolName )
+        BuiltinOnlyToolCallback( ToolDefinition definition )
         {
-            this.definition = DefaultToolDefinition.builder()
-                    .name( toolName )
-                    .description( "Built-in Eclipse MCP tool (AssistAI in-process)." )
-                    .inputSchema( "{\"type\":\"object\",\"properties\":{}}" )
-                    .build();
+            this.definition = Objects.requireNonNull( definition, "definition" );
         }
 
         @Override
@@ -189,6 +187,8 @@ public class McpToolBridge
     {
         private final ToolCallback delegate;
 
+        private final ConversationContext context;
+
         private final ToolCallEventListener listener;
 
         private final McpToolInvocationExecutor invocationExecutor;
@@ -199,12 +199,14 @@ public class McpToolBridge
 
         private ObservableToolCallback(
                 ToolCallback delegate,
+                ConversationContext context,
                 ToolCallEventListener listener,
                 McpToolInvocationExecutor invocationExecutor,
                 BuiltinMcpToolRouter builtinToolRouter,
                 AgentPostEditVerifier postEditVerifier )
         {
             this.delegate = Objects.requireNonNull( delegate, "delegate" );
+            this.context = context;
             this.listener = listener != null ? listener : ToolCallEventListener.noop();
             this.invocationExecutor = Objects.requireNonNull( invocationExecutor, "invocationExecutor" );
             this.builtinToolRouter = Objects.requireNonNull( builtinToolRouter, "builtinToolRouter" );
@@ -234,6 +236,19 @@ public class McpToolBridge
         {
             String id = java.util.UUID.randomUUID().toString();
             String toolName = getToolDefinition().name();
+            if ( context != null && !context.tryReserveToolCall() )
+            {
+                String message = "Tool call limit reached for this agent turn (max "
+                        + context.getMaxToolCalls()
+                        + "). Stop calling tools, summarize the current state, and ask the user before continuing.";
+                listener.onToolCallEvent( new ToolCallEvent(
+                        id,
+                        toolName,
+                        toolInput,
+                        message,
+                        ToolCallStatus.FAILED ) );
+                return message;
+            }
             listener.onToolCallEvent( new ToolCallEvent(
                     id,
                     toolName,

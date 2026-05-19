@@ -256,6 +256,7 @@ public class AgentChatSession
                     .contextId( "agent-" + sessionId )
                     .conversation( new Conversation() )
                     .allowedTools( allowedTools )
+                    .maxToolCalls( agentToolPolicy.getMaxToolRounds() )
                     .build();
             builder.defaultToolCallbacks( toolBridge.getToolCallbacks( toolContext, toolCallEventListener ) );
         }

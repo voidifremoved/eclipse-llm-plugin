@@ -298,7 +298,9 @@ public class ChatView
 
         agentTasksPanel = new Composite( controls, SWT.NONE );
         agentTasksPanel.setLayout( new GridLayout( 1, false ) );
-        agentTasksPanel.setLayoutData( new GridData( SWT.FILL, SWT.FILL, true, false ) );
+        GridData tasksPanelData = new GridData( SWT.FILL, SWT.FILL, true, false );
+        tasksPanelData.exclude = true;
+        agentTasksPanel.setLayoutData( tasksPanelData );
         Label tasksHeader = new Label( agentTasksPanel, SWT.NONE );
         tasksHeader.setText( "Tasks" );
         ScrolledComposite tasksScroll = new ScrolledComposite( agentTasksPanel, SWT.V_SCROLL | SWT.BORDER );
@@ -318,11 +320,14 @@ public class ChatView
         inputLayout.marginHeight = 0;
         inputLayout.horizontalSpacing = 5;
         inputContainer.setLayout(inputLayout);
-        inputContainer.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+        inputContainer.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
         
         // Create the text input area
         inputArea = createUserInput(inputContainer);
-        inputArea.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+        GridData inputData = new GridData(SWT.FILL, SWT.CENTER, true, false);
+        inputData.heightHint = 88;
+        inputData.minimumHeight = 72;
+        inputArea.setLayoutData(inputData);
         setupAutocomplete( inputArea );
         
         
@@ -350,7 +355,7 @@ public class ChatView
         createStopToolItem(actionToolBar);
         createSendToolItem(actionToolBar);
 
-        sashForm.setWeights( new int[] { 70, 30 } );
+        sashForm.setWeights( new int[] { 75, 25 } );
         horizontalSash.setWeights( new int[] { 22, 78 } );
 
         // Enable DnD for the controls below the chat view
@@ -750,6 +755,11 @@ public class ChatView
                 if ( agentTasksPanel != null && !agentTasksPanel.isDisposed() )
                 {
                     agentTasksPanel.setVisible( false );
+                    Object layoutData = agentTasksPanel.getLayoutData();
+                    if ( layoutData instanceof GridData gridData )
+                    {
+                        gridData.exclude = true;
+                    }
                     agentTasksPanel.getParent().layout( true, true );
                 }
                 return;
@@ -762,6 +772,11 @@ public class ChatView
                 row.setEnabled( false );
             }
             agentTasksPanel.setVisible( true );
+            Object layoutData = agentTasksPanel.getLayoutData();
+            if ( layoutData instanceof GridData gridData )
+            {
+                gridData.exclude = false;
+            }
             agentTasksListComposite.pack( true );
             agentTasksPanel.getParent().layout( true, true );
         } );
@@ -1593,7 +1608,7 @@ public class ChatView
         }
         String escapedToolName = escapeHtml( safeText( toolName ) );
         String escapedStatus = escapeHtml( safeText( status ) );
-        String escapedDetails = escapeHtml( safeText( details ) );
+        String detailsHtml = formatToolDetailsHtml( details );
         StringBuilder openLinks = new StringBuilder();
         if ( openablePaths != null )
         {
@@ -1627,17 +1642,122 @@ public class ChatView
                 ${prefHtml}
                 <details class="tool-call-details" open>
                     <summary>Tool details</summary>
-                    <pre><code>${details}</code></pre>
+                    ${detailsHtml}
                 </details>
                 """
                 .replace( "${toolName}", escapedToolName )
                 .replace( "${status}", escapedStatus )
-                .replace( "${details}", escapedDetails )
+                .replace( "${detailsHtml}", detailsHtml )
                 .replace( "${openLinks}", openLinks.toString() )
                 .replace( "${prefHtml}", prefHtml );
         String encodedHtml = java.util.Base64.getEncoder().encodeToString(
                 html.getBytes( java.nio.charset.StandardCharsets.UTF_8 ) );
         setInnerHtmlFromUtf8Base64( messageId, encodedHtml );
+    }
+
+    private String formatToolDetailsHtml( String details )
+    {
+        String text = safeText( details );
+        DiffBlock diffBlock = findDiffBlock( text );
+        if ( diffBlock == null )
+        {
+            return "<pre><code>" + escapeHtml( text ) + "</code></pre>";
+        }
+
+        StringBuilder html = new StringBuilder();
+        String before = text.substring( 0, diffBlock.start() ).trim();
+        if ( !before.isBlank() )
+        {
+            html.append( "<pre class=\"tool-result-summary\"><code>" )
+                    .append( escapeHtml( before ) )
+                    .append( "</code></pre>" );
+        }
+        html.append( renderDiffHtml( diffBlock.diff() ) );
+        String after = text.substring( diffBlock.end() ).trim();
+        if ( !after.isBlank() )
+        {
+            html.append( "<pre class=\"tool-result-summary\"><code>" )
+                    .append( escapeHtml( after ) )
+                    .append( "</code></pre>" );
+        }
+        return html.toString();
+    }
+
+    private DiffBlock findDiffBlock( String text )
+    {
+        if ( text == null )
+        {
+            return null;
+        }
+        String marker = "```diff";
+        int start = text.indexOf( marker );
+        if ( start < 0 )
+        {
+            return null;
+        }
+        int lineStart = text.indexOf( '\n', start );
+        if ( lineStart < 0 )
+        {
+            return null;
+        }
+        int end = text.indexOf( "\n```", lineStart + 1 );
+        if ( end < 0 )
+        {
+            return null;
+        }
+        return new DiffBlock( start, end + 4, text.substring( lineStart + 1, end ) );
+    }
+
+    private String renderDiffHtml( String diff )
+    {
+        StringBuilder html = new StringBuilder();
+        html.append( "<div class=\"tool-diff\" role=\"table\" aria-label=\"File changes\">" );
+        String[] lines = safeText( diff ).split( "\\R", -1 );
+        for ( String line : lines )
+        {
+            if ( line.isEmpty() )
+            {
+                appendDiffLine( html, "context", " ", "" );
+            }
+            else if ( line.startsWith( "+++" ) || line.startsWith( "---" ) )
+            {
+                appendDiffLine( html, "file", " ", line );
+            }
+            else if ( line.startsWith( "@@" ) )
+            {
+                appendDiffLine( html, "hunk", "@", line );
+            }
+            else if ( line.startsWith( "+" ) )
+            {
+                appendDiffLine( html, "add", "+", line.substring( 1 ) );
+            }
+            else if ( line.startsWith( "-" ) )
+            {
+                appendDiffLine( html, "remove", "-", line.substring( 1 ) );
+            }
+            else
+            {
+                String content = line.startsWith( " " ) ? line.substring( 1 ) : line;
+                appendDiffLine( html, "context", " ", content );
+            }
+        }
+        html.append( "</div>" );
+        return html.toString();
+    }
+
+    private void appendDiffLine( StringBuilder html, String kind, String sign, String content )
+    {
+        html.append( "<div class=\"tool-diff-line tool-diff-" )
+                .append( kind )
+                .append( "\"><span class=\"tool-diff-sign\">" )
+                .append( escapeHtml( sign ) )
+                .append( "</span><code>" )
+                .append( escapeHtml( content ) )
+                .append( "</code></div>" );
+    }
+
+    private record DiffBlock( int start, int end, String diff )
+    {
     }
 
     private void setThinkingPlaceholderInBrowser( String assistantMessageId )

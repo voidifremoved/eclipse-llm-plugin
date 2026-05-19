@@ -1,8 +1,12 @@
 package com.rubberjam.eclipse.assistai.springai;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -15,10 +19,15 @@ import com.rubberjam.eclipse.assistai.agent.AgentCompilationErrorScope;
 import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor;
 import com.rubberjam.eclipse.assistai.mcp.McpServerRepository;
 import com.rubberjam.eclipse.assistai.mcp.ToolExecutor;
+import com.rubberjam.eclipse.assistai.mcp.annotations.Tool;
+import com.rubberjam.eclipse.assistai.mcp.annotations.ToolParam;
 import com.rubberjam.eclipse.assistai.tools.UISynchronizeCallable;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+
+import org.springframework.ai.tool.definition.DefaultToolDefinition;
+import org.springframework.ai.tool.definition.ToolDefinition;
 
 /**
  * Invokes built-in Eclipse MCP tools in-process (no JSON-RPC round trip). Used by the agent UI to
@@ -40,7 +49,7 @@ public final class BuiltinMcpToolRouter
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private volatile Map<String, ToolExecutor> toolsByName;
+    private volatile Map<String, BuiltinToolRegistration> toolsByName;
 
     @Inject
     public BuiltinMcpToolRouter(
@@ -71,12 +80,27 @@ public final class BuiltinMcpToolRouter
         return toolsByName.containsKey( toolName );
     }
 
+    public Optional<ToolDefinition> getToolDefinition( String toolName )
+    {
+        if ( toolName == null || toolName.isBlank() )
+        {
+            return Optional.empty();
+        }
+        ensureLoaded();
+        BuiltinToolRegistration registration = toolsByName.get( toolName );
+        if ( registration == null )
+        {
+            return Optional.empty();
+        }
+        return Optional.of( registration.definition() );
+    }
+
     public Optional<String> tryInvoke( String toolName, String toolInputJson )
     {
         Objects.requireNonNull( toolName, "toolName" );
         ensureLoaded();
-        ToolExecutor executor = toolsByName.get( toolName );
-        if ( executor == null )
+        BuiltinToolRegistration registration = toolsByName.get( toolName );
+        if ( registration == null )
         {
             return Optional.empty();
         }
@@ -86,7 +110,7 @@ public final class BuiltinMcpToolRouter
         {
             args = applyCompilationErrorScope( args );
         }
-        Object result = executor.call( bareToolName, args ).join();
+        Object result = registration.executor().call( bareToolName, args ).join();
         if ( result == null )
         {
             return Optional.of( "" );
@@ -117,7 +141,7 @@ public final class BuiltinMcpToolRouter
             {
                 return;
             }
-            Map<String, ToolExecutor> map = new HashMap<>();
+            Map<String, BuiltinToolRegistration> map = new HashMap<>();
             for ( McpServerDescriptor descriptor : serverRepository.listStoredServers() )
             {
                 if ( !descriptor.builtIn() || !descriptor.enabled() )
@@ -131,12 +155,67 @@ public final class BuiltinMcpToolRouter
                     String name = ToolExecutor.toFunctionName( method );
                     if ( !descriptor.excludedTools().contains( name ) )
                     {
-                        map.put( name, executor );
-                        map.put( descriptor.name() + "__" + name, executor );
+                        map.put( name, new BuiltinToolRegistration(
+                                executor,
+                                createToolDefinition( name, method ) ) );
+                        String prefixedName = AssistAiMcpToolNames.prefixed( descriptor.name(), name );
+                        map.put( prefixedName, new BuiltinToolRegistration(
+                                executor,
+                                createToolDefinition( prefixedName, method ) ) );
                     }
                 }
             }
             toolsByName = Map.copyOf( map );
+        }
+    }
+
+    private ToolDefinition createToolDefinition( String registeredName, Method method )
+    {
+        Tool toolAnnotation = method.getAnnotation( Tool.class );
+        String description = toolAnnotation != null ? toolAnnotation.description() : registeredName;
+        String schema = createInputSchemaJson( method, toolAnnotation );
+        return DefaultToolDefinition.builder()
+                .name( registeredName )
+                .description( description )
+                .inputSchema( schema )
+                .build();
+    }
+
+    private String createInputSchemaJson( Method method, Tool toolAnnotation )
+    {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        List<String> required = new ArrayList<>();
+        for ( Parameter parameter : method.getParameters() )
+        {
+            ToolParam toolParam = parameter.getAnnotation( ToolParam.class );
+            if ( toolParam == null )
+            {
+                continue;
+            }
+            String name = ToolExecutor.toParamName( parameter );
+            Map<String, Object> property = new LinkedHashMap<>();
+            property.put( "type", toolParam.type() );
+            property.put( "description", toolParam.description() );
+            properties.put( name, property );
+            if ( toolParam.required() )
+            {
+                required.add( name );
+            }
+        }
+        Map<String, Object> inputSchema = new LinkedHashMap<>();
+        inputSchema.put( "type", toolAnnotation != null ? toolAnnotation.type() : "object" );
+        inputSchema.put( "properties", properties );
+        if ( !required.isEmpty() )
+        {
+            inputSchema.put( "required", required );
+        }
+        try
+        {
+            return objectMapper.writeValueAsString( inputSchema );
+        }
+        catch ( Exception e )
+        {
+            return "{\"type\":\"object\",\"properties\":{}}";
         }
     }
 
@@ -176,5 +255,9 @@ public final class BuiltinMcpToolRouter
             merged.put( "projectName", scope.projectName() );
         }
         return merged;
+    }
+
+    private record BuiltinToolRegistration( ToolExecutor executor, ToolDefinition definition )
+    {
     }
 }

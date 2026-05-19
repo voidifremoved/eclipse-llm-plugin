@@ -23,14 +23,14 @@ import jakarta.inject.Inject;
 public class PromptContextValueProvider 
 {
     
-    private static final String GIT_DIFF = "gitDiff";
-    private static final String CONSOLE_OUTPUT = "consoleOutput";
-    private static final String ERRORS = "errors";
-    private static final String SELECTED_CONTENT = "selectedContent";
-    private static final String CURRENT_FILE_CONTENT = "currentFileContent";
-    private static final String CURRENT_FILE_PATH = "currentFilePath";
-    private static final String CURRENT_FILE_NAME = "currentFileName";
-    private static final String CURRENT_PROJECT_NAME = "currentProjectName";
+    public static final String GIT_DIFF = "gitDiff";
+    public static final String CONSOLE_OUTPUT = "consoleOutput";
+    public static final String ERRORS = "errors";
+    public static final String SELECTED_CONTENT = "selectedContent";
+    public static final String CURRENT_FILE_CONTENT = "currentFileContent";
+    public static final String CURRENT_FILE_PATH = "currentFilePath";
+    public static final String CURRENT_FILE_NAME = "currentFileName";
+    public static final String CURRENT_PROJECT_NAME = "currentProjectName";
     
     // Completion-specific context keys
     private static final String FILE_EXTENSION = "fileExtension";
