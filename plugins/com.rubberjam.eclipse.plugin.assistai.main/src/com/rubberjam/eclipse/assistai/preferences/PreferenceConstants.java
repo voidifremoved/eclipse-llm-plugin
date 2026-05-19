@@ -31,4 +31,10 @@ public class PreferenceConstants
     // AI Ignore preferences
     public static final String ASSISTAI_IGNORE_FILENAME = "AssistAIIgnoreFilename";
     public static final String ASSISTAI_GLOBAL_EXCLUDE_PATTERNS = "AssistAIGlobalExcludePatterns";
+
+    /** Agent: allow duck-duck-search and webpage-reader MCP tools */
+    public static final String ASSISTAI_AGENT_ALLOW_WEB_TOOLS = "AssistAIAgentAllowWebTools";
+
+    /** Agent: append bundled Eclipse workflow hints to the system prompt */
+    public static final String ASSISTAI_AGENT_USE_ECLIPSE_SKILLS = "AssistAIAgentUseEclipseSkills";
 }

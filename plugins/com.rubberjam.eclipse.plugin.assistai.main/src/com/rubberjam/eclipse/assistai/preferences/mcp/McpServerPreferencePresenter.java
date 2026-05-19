@@ -23,6 +23,7 @@ import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor.McpServerDescripto
 import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor.Status;
 import com.rubberjam.eclipse.assistai.mcp.http.HttpMcpServerRegistry;
 import com.rubberjam.eclipse.assistai.agent.AgentSessionManager;
+import com.rubberjam.eclipse.assistai.agent.AgentToolPolicy;
 import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRegistry;
 import com.rubberjam.eclipse.assistai.mcp.McpServerRepository;
 import com.rubberjam.eclipse.assistai.mcp.remote.RemoteMcpClientFactory;
@@ -47,6 +48,8 @@ public class McpServerPreferencePresenter
     private final HttpMcpServerRegistry httpMcpServerRegistry;
     private final McpServerRepository mcpServerRepository;
     private final ILog logger;
+
+    private final AgentToolPolicy agentToolPolicy;
     
     private McpServerPreferencePage view;
 
@@ -56,18 +59,49 @@ public class McpServerPreferencePresenter
     public McpServerPreferencePresenter( InMemoryMcpClientRegistry mcpClientRetistry,
                                          HttpMcpServerRegistry httpMcpServerRegistry,
                                          McpServerRepository mcpServerRepository,
+                                         AgentToolPolicy agentToolPolicy,
                                          ILog logger
                                          )
     {
         Objects.requireNonNull( mcpClientRetistry );
         Objects.requireNonNull( httpMcpServerRegistry );
         Objects.requireNonNull( mcpServerRepository );
+        Objects.requireNonNull( agentToolPolicy );
         Objects.requireNonNull( logger );
         
         this.clientRetistry = mcpClientRetistry;
         this.httpMcpServerRegistry = httpMcpServerRegistry;
         this.mcpServerRepository = mcpServerRepository;
+        this.agentToolPolicy = agentToolPolicy;
         this.logger = logger;
+    }
+
+    public boolean isAllowWebTools()
+    {
+        return agentToolPolicy.isAllowWebTools();
+    }
+
+    public boolean isUseEclipseSkillsInPrompt()
+    {
+        return agentToolPolicy.isUseEclipseSkillsInPrompt();
+    }
+
+    public void saveAgentToolPreferences( boolean allowWebTools, boolean useEclipseSkills )
+    {
+        agentToolPolicy.setAllowWebTools( allowWebTools );
+        agentToolPolicy.setUseEclipseSkillsInPrompt( useEclipseSkills );
+        Activator.getDefault().make( AgentSessionManager.class ).refreshMcpToolsOnAllSessions();
+    }
+
+    public void applyWorkspaceAgentPreset()
+    {
+        agentToolPolicy.applyWorkspaceAgentPreset();
+        restartServers();
+        if ( view != null )
+        {
+            view.showServers( getServersWithStatus() );
+            view.syncAgentPolicyControls();
+        }
     }
     
     /**

@@ -70,7 +70,7 @@ Step-by-step roadmap based on the current plugin codebase (May 2026). Use this a
 
 ---
 
-### Phase 1 — Workspace-first agent policy (2–3 weeks)
+### Phase 1 — Workspace-first agent policy (2–3 weeks) ✅ Completed
 
 **Goal:** Structurally favour local project tools over web/utility tools.
 

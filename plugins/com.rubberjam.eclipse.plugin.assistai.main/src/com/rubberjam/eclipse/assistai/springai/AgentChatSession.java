@@ -10,9 +10,12 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 
 import com.rubberjam.eclipse.assistai.agent.AgentMessageSnapshot;
+import com.rubberjam.eclipse.assistai.agent.AgentToolPolicy;
 import com.rubberjam.eclipse.assistai.agent.ToolCallEventListener;
 import com.rubberjam.eclipse.assistai.chat.Attachment;
 import com.rubberjam.eclipse.assistai.chat.ChatMessage;
+import com.rubberjam.eclipse.assistai.chat.Conversation;
+import com.rubberjam.eclipse.assistai.chat.ConversationContext;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 
 import reactor.core.publisher.Flux;
@@ -26,17 +29,25 @@ public class AgentChatSession
     private ChatClient chatClient;
     private ModelApiDescriptor currentModel;
     private final McpToolBridge toolBridge;
+
+    private final AgentToolPolicy agentToolPolicy;
+
     private final ChatModelRegistry modelRegistry;
     private final List<Message> conversationHistory;
     private final List<ChatMessage> displayHistory;
     private String systemPrompt;
     private ToolCallEventListener toolCallEventListener = ToolCallEventListener.noop();
 
-    public AgentChatSession( ChatModelRegistry modelRegistry, McpToolBridge toolBridge, String systemPrompt )
+    public AgentChatSession(
+            ChatModelRegistry modelRegistry,
+            McpToolBridge toolBridge,
+            AgentToolPolicy agentToolPolicy,
+            String systemPrompt )
     {
         this.sessionId = UUID.randomUUID().toString();
         this.modelRegistry = modelRegistry;
         this.toolBridge = toolBridge;
+        this.agentToolPolicy = agentToolPolicy;
         this.conversationHistory = new ArrayList<>();
         this.displayHistory = new ArrayList<>();
         this.systemPrompt = systemPrompt;
@@ -225,7 +236,12 @@ public class AgentChatSession
                 .defaultSystem( systemPrompt );
         if ( currentModel.functionCalling() )
         {
-            builder.defaultToolCallbacks( toolBridge.getToolCallbacks( toolCallEventListener ) );
+            ConversationContext toolContext = ConversationContext.builder()
+                    .contextId( "agent-" + sessionId )
+                    .conversation( new Conversation() )
+                    .allowedTools( agentToolPolicy.resolveAllowedToolNames() )
+                    .build();
+            builder.defaultToolCallbacks( toolBridge.getToolCallbacks( toolContext, toolCallEventListener ) );
         }
         this.chatClient = builder.build();
     }

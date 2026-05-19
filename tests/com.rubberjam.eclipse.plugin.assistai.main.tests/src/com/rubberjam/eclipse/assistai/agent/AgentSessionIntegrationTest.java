@@ -2,6 +2,9 @@ package com.rubberjam.eclipse.assistai.agent;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import java.util.Collections;
+import java.util.Set;
+
 import org.junit.jupiter.api.Test;
 
 import com.rubberjam.eclipse.assistai.springai.AgentChatSession;
@@ -15,9 +18,18 @@ public class AgentSessionIntegrationTest
     {
         ChatModelRegistry modelRegistry = new ChatModelRegistry();
         McpToolBridge toolBridge = new McpToolBridge();
+        AgentToolPolicy toolPolicy = new AgentToolPolicy()
+        {
+            @Override
+            public Set<String> resolveAllowedToolNames()
+            {
+                return Collections.emptySet();
+            }
+        };
         AgentChatSession chatSession = new AgentChatSession(
                 modelRegistry,
                 toolBridge,
+                toolPolicy,
                 "You are a helpful assistant." );
         AgentSession session = new AgentSession( chatSession );
 

@@ -100,6 +100,12 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
 
     private boolean                      suppressServerSelectionEvents;
 
+    private Button                       workspacePresetButton;
+
+    private Button                       allowWebToolsCheckbox;
+
+    private Button                       useEclipseSkillsCheckbox;
+
     @Override
     public void init( IWorkbench workbench )
     {
@@ -112,9 +118,13 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
 
     @Override
     protected Control createContents(Composite parent) {
-        // Create a vertical SashForm for the layout
-        var sashForm = new SashForm(parent, SWT.VERTICAL);
-        sashForm.setLayoutData(new GridData(GridData.FILL_BOTH));
+        Composite root = new Composite( parent, SWT.NONE );
+        root.setLayout( new GridLayout( 1, false ) );
+
+        createAgentPolicySection( root );
+
+        var sashForm = new SashForm( root, SWT.VERTICAL );
+        sashForm.setLayoutData( new GridData( GridData.FILL, GridData.FILL, true, true ) );
 
         // Composite for the server list and buttons
         Composite listButtonsComposite = new Composite(sashForm, SWT.NONE);
@@ -159,8 +169,60 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
         initializeListeners(serverTableViewer);
         initializeDetailsListeners();
         clearServerDetails();
+        syncAgentPolicyControls();
 
-        return sashForm;
+        return root;
+    }
+
+    private void createAgentPolicySection( Composite parent )
+    {
+        Group agentGroup = new Group( parent, SWT.NONE );
+        agentGroup.setText( "Agent tool policy" );
+        agentGroup.setLayout( new GridLayout( 2, false ) );
+        agentGroup.setLayoutData( new GridData( GridData.FILL, GridData.CENTER, true, false ) );
+
+        workspacePresetButton = new Button( agentGroup, SWT.PUSH );
+        workspacePresetButton.setText( "Apply workspace agent preset" );
+        workspacePresetButton.setLayoutData( new GridData( SWT.FILL, SWT.CENTER, true, false, 2, 1 ) );
+        workspacePresetButton.setToolTipText(
+                "Enables Eclipse workspace MCP servers and memory; disables web search servers." );
+        workspacePresetButton.addSelectionListener( new SelectionAdapter()
+        {
+            @Override
+            public void widgetSelected( SelectionEvent e )
+            {
+                presenter.applyWorkspaceAgentPreset();
+            }
+        } );
+
+        allowWebToolsCheckbox = new Button( agentGroup, SWT.CHECK );
+        allowWebToolsCheckbox.setText( "Allow web search tools (duck-duck-search, webpage-reader)" );
+        allowWebToolsCheckbox.setLayoutData( new GridData( SWT.FILL, SWT.CENTER, true, false, 2, 1 ) );
+
+        useEclipseSkillsCheckbox = new Button( agentGroup, SWT.CHECK );
+        useEclipseSkillsCheckbox.setText( "Include Eclipse workflow hints in agent system prompt" );
+        useEclipseSkillsCheckbox.setLayoutData( new GridData( SWT.FILL, SWT.CENTER, true, false, 2, 1 ) );
+    }
+
+    public void syncAgentPolicyControls()
+    {
+        if ( allowWebToolsCheckbox == null || allowWebToolsCheckbox.isDisposed() )
+        {
+            return;
+        }
+        allowWebToolsCheckbox.setSelection( presenter.isAllowWebTools() );
+        useEclipseSkillsCheckbox.setSelection( presenter.isUseEclipseSkillsInPrompt() );
+    }
+
+    private void saveAgentPolicyFromControls()
+    {
+        if ( allowWebToolsCheckbox == null || allowWebToolsCheckbox.isDisposed() )
+        {
+            return;
+        }
+        presenter.saveAgentToolPreferences(
+                allowWebToolsCheckbox.getSelection(),
+                useEclipseSkillsCheckbox.getSelection() );
     }
 
     private void createServerTableColumns(CheckboxTableViewer checkboxTableViewer) {
@@ -501,6 +563,7 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     protected void performApply()
     {
         McpServerPreferencesLog.info( "performApply: invoked" );
+        saveAgentPolicyFromControls();
         if ( commitServerDetails() )
         {
             super.performApply();
@@ -515,6 +578,7 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     public boolean performOk()
     {
         McpServerPreferencesLog.info( "performOk: invoked" );
+        saveAgentPolicyFromControls();
         if ( !commitServerDetails() )
         {
             McpServerPreferencesLog.warn( "performOk: commitServerDetails returned false" );

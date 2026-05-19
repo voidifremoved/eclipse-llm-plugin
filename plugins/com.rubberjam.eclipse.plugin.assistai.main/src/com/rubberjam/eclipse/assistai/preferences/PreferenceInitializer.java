@@ -95,6 +95,9 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer
         store.setDefault(PreferenceConstants.ASSISTAI_IGNORE_FILENAME, ".aiignore");
         store.setDefault(PreferenceConstants.ASSISTAI_GLOBAL_EXCLUDE_PATTERNS, "*.pem\n*.key\n*.env\n.env.*\ncredentials.json\nsecrets.properties");
 
+        store.setDefault( PreferenceConstants.ASSISTAI_AGENT_ALLOW_WEB_TOOLS, false );
+        store.setDefault( PreferenceConstants.ASSISTAI_AGENT_USE_ECLIPSE_SKILLS, true );
+
         PromptLoader promptLoader = new PromptLoader();
         for ( Prompts prompt : Prompts.values() )
         {
