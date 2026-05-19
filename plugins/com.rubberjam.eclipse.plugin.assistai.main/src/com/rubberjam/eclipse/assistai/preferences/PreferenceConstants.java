@@ -24,6 +24,8 @@ public class PreferenceConstants
     public static final String ASSISTAI_COMPLETION_MODEL = "AssistAICompletionModel";
     public static final String ASSISTAI_COMPLETION_TIMEOUT_SECONDS = "AssistAICompletionTimeoutSeconds";
     public static final String ASSISTAI_COMPLETION_HOTKEY = "AssistAICompletionHotkey";
+    /** When true, code completion uses Spring AI instead of legacy HTTP clients. */
+    public static final String ASSISTAI_COMPLETION_USE_SPRING_AI = "AssistAICompletionUseSpringAi";
     
     // Default hotkey: Alt+/ (cross-platform friendly)
     public static final String ASSISTAI_COMPLETION_HOTKEY_DEFAULT = "Alt+/";

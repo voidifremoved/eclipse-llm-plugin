@@ -40,24 +40,32 @@ public class McpToolBridge
 
     public ToolCallback[] getToolCallbacks( ToolCallEventListener listener )
     {
+        return getToolCallbacks( null, listener );
+    }
+
+    /**
+     * Tool callbacks restricted to {@link ConversationContext#getAllowedTools()} when set.
+     */
+    public ToolCallback[] getToolCallbacks( ConversationContext context )
+    {
+        return getToolCallbacks( context, ToolCallEventListener.noop() );
+    }
+
+    public ToolCallback[] getToolCallbacks( ConversationContext context, ToolCallEventListener listener )
+    {
         List<McpSyncClient> clients = new ArrayList<>( mcpClientRegistryProvider.get().listEnabledClients().values() );
         List<ToolCallback> callbacks = SyncMcpToolCallbackProvider.syncToolCallbacks( clients );
         List<ToolCallback> wrapped = new ArrayList<>();
         for ( ToolCallback callback : callbacks )
         {
+            if ( context != null && context.getAllowedTools() != null
+                    && !context.isToolAllowed( callback.getToolDefinition().name() ) )
+            {
+                continue;
+            }
             wrapped.add( new ObservableToolCallback( callback, listener ) );
         }
         return wrapped.toArray( new ToolCallback[0] );
-    }
-
-    /**
-     * Reserved for future filtering (for example, restricting tools by conversation scope).
-     * Currently returns the same callbacks as {@link #getToolCallbacks()}.
-     */
-    public ToolCallback[] getToolCallbacks( ConversationContext context )
-    {
-        Objects.requireNonNull( context, "context" );
-        return getToolCallbacks();
     }
 
     private static final class ObservableToolCallback implements ToolCallback

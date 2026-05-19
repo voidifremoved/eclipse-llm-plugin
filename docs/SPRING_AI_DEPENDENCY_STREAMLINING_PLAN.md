@@ -12,8 +12,8 @@ Make the Eclipse plugin build and dependency model boring, repeatable, and easie
 | 2 Separate source from output | **Complete** | `site/` jars gitignored/removed; CI deploys from `releng/.../target/repository`. |
 | 3 Centralise versions | **Mostly complete** | Parent POM properties + `docs/DEPENDENCIES.md`. Kept `includeDependencyDepth=direct` with explicit 2nd-level roots; `list-wrapped-bundles.ps1` added. |
 | 4 Isolate Spring AI | **Mostly complete** | Package `com.rubberjam.eclipse.assistai.springai` in main plugin (factory, registry, providers, `MessageAdapter`). Separate OSGi bundle deferred until shared API bundle exists. `McpToolBridge` remains in `agent`. |
-| 5 Provider migration | **Not started** | Legacy HTTP clients still in main. |
-| 6 Own OSGi metadata | **Not started** | OkHttp wrapper fixed; Spring AI still uses generated manifests from target. |
+| 5 Provider migration | **In progress** | Agent chat on Spring AI. Completion: optional Spring AI path (`AssistAICompletionUseSpringAi`, default off). Legacy HTTP clients remain for chat/completion fallback. |
+| 6 Own OSGi metadata | **Started** | OkHttp owned wrapper; `scripts/inventory-p2-repository.ps1` + `docs/OSGI_BUNDLES.md`. |
 | 7 Repository verification | **Mostly complete** | Feature-only `category.xml` + `includeAllDependencies`. Full `mvn clean verify` passes. Install steps documented in `BUILDING.md`. |
 
 ---
@@ -53,16 +53,19 @@ Make the Eclipse plugin build and dependency model boring, repeatable, and easie
 
 ### Phase 5: Transition Providers to Spring AI
 
-- [ ] OpenAI-compatible providers (OpenAI, Grok, Groq, DeepSeek)
-- [ ] Anthropic
-- [ ] Gemini / Google GenAI
-- [ ] MCP tool bridge integration parity tests
-- [ ] Remove each legacy `*StreamJavaHttpClient` after parity
+- [x] Agent chat UI uses Spring AI for all providers via `ChatModelFactory` / `OpenAiCompatibleChatModelProvider` / Anthropic / Google GenAI
+- [x] Code completion: Spring AI path behind preference (`AssistAICompletionUseSpringAi`, experimental, default off)
+- [x] `McpToolBridge` filters tools by `ConversationContext.allowedTools` (completion tool subset)
+- [ ] OpenAI-compatible: remove legacy `OpenAIStreamJavaHttpClient` after completion parity verified
+- [ ] Anthropic / Gemini / Grok / DeepSeek legacy clients — remove after parity
+- [ ] MCP tool bridge integration parity tests for Spring AI completion path
+- [ ] Remove deprecated `ChatViewPresenter` / `SendConversationJob` when confirmed unused
 
 ### Phase 6: Own OSGi Metadata
 
-- [ ] Inventory generated bundle IDs from repository build output
-- [ ] Decide embed vs wrapper vs target-generated for Tomcat, MCP JSON, Spring stack
+- [x] Inventory script for repository plugins (`scripts/inventory-p2-repository.ps1`)
+- [x] Document embed vs wrapper policy (`docs/OSGI_BUNDLES.md`)
+- [ ] Decide embed vs wrapper vs target-generated for Tomcat, MCP JSON, Spring stack (per release review)
 - [ ] Tycho target filters for duplicate package providers
 
 ### Phase 7: Repository and Install Verification
@@ -85,6 +88,6 @@ See `docs/DEPENDENCIES.md` for how to add dependencies.
 ## Immediate next work
 
 1. Generate Maven wrapper when local PKIX/trust is fixed; switch CI to `mvnw`.
-2. Begin Phase 5 with one provider (OpenAI-compatible) behind a preference flag.
-3. Phase 6: inventory wrapped bundle IDs from repository output; decide owned wrappers for Tomcat / MCP JSON.
+2. Test Spring AI completion (`Use Spring AI for completion`) with OpenAI-compatible model; then remove legacy completion HTTP path.
+3. Phase 6: run `inventory-p2-repository.ps1` on release builds; decide owned wrappers for Tomcat / MCP JSON.
 4. Optional: extract `assistai.core` API bundle so Spring AI can become a separate plugin without a reactor cycle.

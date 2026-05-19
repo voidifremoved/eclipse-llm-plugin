@@ -67,15 +67,18 @@ public class StreamingCompletionClient
 
     private ILog logger;
     private CompletionsLanguageModelHttpClientProvider clientProvider;
+    private SpringAiStreamingCompletionClient springAiClient;
     private CompletionConfiguration configuration;
 
     @Inject
-    public StreamingCompletionClient( 
-            CompletionsLanguageModelHttpClientProvider clientProvider, 
-            CompletionConfiguration configuration, 
+    public StreamingCompletionClient(
+            CompletionsLanguageModelHttpClientProvider clientProvider,
+            SpringAiStreamingCompletionClient springAiClient,
+            CompletionConfiguration configuration,
             ILog logger )
     {
         this.clientProvider = Objects.requireNonNull( clientProvider );
+        this.springAiClient = Objects.requireNonNull( springAiClient );
         this.configuration = Objects.requireNonNull( configuration );
         this.logger = Objects.requireNonNull( logger );
     }
@@ -97,6 +100,12 @@ public class StreamingCompletionClient
         {
             logger.info( "LLM code completion is disabled in preferences" );
             return CompletableFuture.completedFuture( "" );
+        }
+
+        if ( configuration.useSpringAi() )
+        {
+            logger.info( "Using Spring AI for code completion" );
+            return springAiClient.startStreaming( conversation, onChunk );
         }
 
         String contextId = "completion-" + System.currentTimeMillis();
@@ -233,7 +242,7 @@ public class StreamingCompletionClient
 
                 if ( item.type() == Incoming.Type.CONTENT )
                 {
-                    String chunk = sanitizeMarkdownChunk( item.payload().toString(), markdownTruncated );
+                    String chunk = CompletionChunkSanitizer.sanitize( item.payload().toString(), markdownTruncated );
                     fullResponse.append( chunk );
 
                     if ( onChunk != null )
@@ -328,29 +337,4 @@ public class StreamingCompletionClient
         }
     }
     
-    /**
-     * Sanitizes markdown code fences from completion chunks.
-     */
-    private static String sanitizeMarkdownChunk( String rawChunk, AtomicBoolean markdownTruncated )
-    {
-        if ( rawChunk == null || rawChunk.isEmpty() )
-        {
-            return "";
-        }
-
-        String chunk = rawChunk;
-
-        // Drop common markdown code fences. If the fence is encountered, truncate the rest of the stream.
-        int fenceIndex = chunk.indexOf( "```" );
-        if ( fenceIndex >= 0 )
-        {
-            markdownTruncated.set( true );
-            chunk = chunk.substring( 0, fenceIndex );
-        }
-
-        // Remove standalone fence markers that could arrive split across chunks.
-        chunk = chunk.replace( "~~~", "" );
-
-        return chunk;
-    }
 }

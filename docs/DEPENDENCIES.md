@@ -27,6 +27,14 @@ The target uses:
 1. Add the missing artifact as another root `<dependency>` in the target file, or
 2. Re-evaluate switching to `includeDependencyDepth="infinite"` on a branch only after trimming explicit 2nd-level roots (current policy: keep `direct` + documented explicit transitives).
 
+To list bundles in the built update site:
+
+```powershell
+.\scripts\inventory-p2-repository.ps1
+```
+
+See `docs/OSGI_BUNDLES.md` for embed vs wrapper policy.
+
 To list wrapped bundle symbolic names from a Tycho build log:
 
 ```powershell

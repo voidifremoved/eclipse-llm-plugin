@@ -90,6 +90,7 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer
         store.setDefault(PreferenceConstants.ASSISTAI_COMPLETION_MODEL, ""); // Empty means use chat model
         store.setDefault(PreferenceConstants.ASSISTAI_COMPLETION_TIMEOUT_SECONDS, 8);
         store.setDefault(PreferenceConstants.ASSISTAI_COMPLETION_HOTKEY, PreferenceConstants.ASSISTAI_COMPLETION_HOTKEY_DEFAULT);
+        store.setDefault(PreferenceConstants.ASSISTAI_COMPLETION_USE_SPRING_AI, false);
 
         // AI Ignore defaults
         store.setDefault(PreferenceConstants.ASSISTAI_IGNORE_FILENAME, ".aiignore");
