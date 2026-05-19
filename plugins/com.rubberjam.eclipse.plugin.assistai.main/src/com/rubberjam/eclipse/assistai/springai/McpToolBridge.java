@@ -3,6 +3,8 @@ package com.rubberjam.eclipse.assistai.springai;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.TimeoutException;
 
 import org.eclipse.e4.core.di.annotations.Creatable;
 
@@ -33,6 +35,12 @@ public class McpToolBridge
     @Inject
     private Provider<InMemoryMcpClientRegistry> mcpClientRegistryProvider;
 
+    @Inject
+    private McpToolInvocationExecutor toolInvocationExecutor;
+
+    @Inject
+    private BuiltinMcpToolRouter builtinToolRouter;
+
     public ToolCallback[] getToolCallbacks()
     {
         return getToolCallbacks( ToolCallEventListener.noop() );
@@ -53,7 +61,9 @@ public class McpToolBridge
 
     public ToolCallback[] getToolCallbacks( ConversationContext context, ToolCallEventListener listener )
     {
-        List<McpSyncClient> clients = new ArrayList<>( mcpClientRegistryProvider.get().listEnabledClients().values() );
+        InMemoryMcpClientRegistry registry = mcpClientRegistryProvider.get();
+        registry.ensureClientsReady();
+        List<McpSyncClient> clients = new ArrayList<>( registry.listEnabledClients().values() );
         List<ToolCallback> callbacks = SyncMcpToolCallbackProvider.syncToolCallbacks( clients );
         List<ToolCallback> wrapped = new ArrayList<>();
         for ( ToolCallback callback : callbacks )
@@ -63,7 +73,7 @@ public class McpToolBridge
             {
                 continue;
             }
-            wrapped.add( new ObservableToolCallback( callback, listener ) );
+            wrapped.add( new ObservableToolCallback( callback, listener, toolInvocationExecutor, builtinToolRouter ) );
         }
         return wrapped.toArray( new ToolCallback[0] );
     }
@@ -74,10 +84,20 @@ public class McpToolBridge
 
         private final ToolCallEventListener listener;
 
-        private ObservableToolCallback( ToolCallback delegate, ToolCallEventListener listener )
+        private final McpToolInvocationExecutor invocationExecutor;
+
+        private final BuiltinMcpToolRouter builtinToolRouter;
+
+        private ObservableToolCallback(
+                ToolCallback delegate,
+                ToolCallEventListener listener,
+                McpToolInvocationExecutor invocationExecutor,
+                BuiltinMcpToolRouter builtinToolRouter )
         {
             this.delegate = Objects.requireNonNull( delegate, "delegate" );
             this.listener = listener != null ? listener : ToolCallEventListener.noop();
+            this.invocationExecutor = Objects.requireNonNull( invocationExecutor, "invocationExecutor" );
+            this.builtinToolRouter = Objects.requireNonNull( builtinToolRouter, "builtinToolRouter" );
         }
 
         @Override
@@ -111,7 +131,14 @@ public class McpToolBridge
                     ToolCallStatus.STARTED ) );
             try
             {
-                String result = delegate.call( toolInput, toolContext );
+                String result = invocationExecutor.invoke( () -> {
+                    Optional<String> builtin = builtinToolRouter.tryInvoke( toolName, toolInput );
+                    if ( builtin.isPresent() )
+                    {
+                        return builtin.get();
+                    }
+                    return delegate.call( toolInput, toolContext );
+                } );
                 listener.onToolCallEvent( new ToolCallEvent(
                         id,
                         toolName,
@@ -120,15 +147,33 @@ public class McpToolBridge
                         ToolCallStatus.FINISHED ) );
                 return result;
             }
-            catch ( RuntimeException e )
+            catch ( TimeoutException e )
             {
+                String message = "Tool call timed out: " + toolName;
                 listener.onToolCallEvent( new ToolCallEvent(
                         id,
                         toolName,
                         toolInput,
-                        e.getMessage(),
+                        message,
                         ToolCallStatus.FAILED ) );
-                throw e;
+                throw new RuntimeException( message, e );
+            }
+            catch ( Exception e )
+            {
+                String message = e.getCause() != null && e.getCause().getMessage() != null
+                        ? e.getCause().getMessage()
+                        : e.getMessage();
+                listener.onToolCallEvent( new ToolCallEvent(
+                        id,
+                        toolName,
+                        toolInput,
+                        message,
+                        ToolCallStatus.FAILED ) );
+                if ( e instanceof RuntimeException runtime )
+                {
+                    throw runtime;
+                }
+                throw new RuntimeException( message, e );
             }
         }
     }

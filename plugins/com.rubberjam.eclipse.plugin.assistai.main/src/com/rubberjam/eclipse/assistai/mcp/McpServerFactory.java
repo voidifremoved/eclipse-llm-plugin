@@ -18,6 +18,7 @@ import org.osgi.framework.Bundle;
 import org.osgi.framework.FrameworkUtil;
 
 import com.rubberjam.eclipse.assistai.mcp.annotations.ToolParam;
+import com.rubberjam.eclipse.assistai.tools.UISynchronizeCallable;
 
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapperSupplier;
 import io.modelcontextprotocol.json.schema.jackson2.JacksonJsonSchemaValidatorSupplier;
@@ -36,11 +37,14 @@ import jakarta.inject.Inject;
 public class McpServerFactory
 {
     private final ILog logger;
-    
+
+    private final UISynchronizeCallable uiSync;
+
     @Inject
-    public McpServerFactory(ILog logger)
+    public McpServerFactory( ILog logger, UISynchronizeCallable uiSync )
     {
         this.logger = logger;
+        this.uiSync = uiSync;
     }
     
     private McpSchema.Implementation createImplementationInfo( Object serverImplementation )
@@ -222,7 +226,7 @@ public class McpServerFactory
     private List<SyncToolSpecification> createToolSpecifications( Object serverImplementation, Collection<String> excludedTools )
     {
         var excluded = Set.copyOf( excludedTools );
-        var executor = new ToolExecutor( serverImplementation );
+        var executor = new ToolExecutor( serverImplementation, uiSync );
         var tools    = extractAnnotatedTools( executor.getFunctions() );
         if ( tools.isEmpty() )
         {
@@ -242,7 +246,7 @@ public class McpServerFactory
     
     public List<String> listToolNames( Object serverImplementation )
     {
-        var executor = new ToolExecutor( serverImplementation );
+        var executor = new ToolExecutor( serverImplementation, uiSync );
         return extractAnnotatedTools( executor.getFunctions() ).stream()
                 .map( McpSchema.Tool::name )
                 .collect( Collectors.toList() );

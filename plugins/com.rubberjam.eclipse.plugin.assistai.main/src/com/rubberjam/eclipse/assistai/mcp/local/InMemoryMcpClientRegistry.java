@@ -11,8 +11,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.eclipse.swt.widgets.Display;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -25,6 +31,7 @@ import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor;
 import com.rubberjam.eclipse.assistai.mcp.McpServerRepository;
 import com.rubberjam.eclipse.assistai.mcp.local.InMemoryClientServerFactory.InMemorySyncClientServer;
 import com.rubberjam.eclipse.assistai.mcp.remote.RemoteMcpClientFactory;
+import com.rubberjam.eclipse.assistai.springai.BuiltinMcpToolRouter;
 import com.rubberjam.eclipse.assistai.tools.EclipseVariableUtilities;
 import com.google.common.base.Predicate;
 import com.google.common.base.Predicates;
@@ -45,11 +52,28 @@ import jakarta.inject.Singleton;
 @Singleton
 public class InMemoryMcpClientRegistry
 {
+    private static final int CLIENT_INIT_TIMEOUT_SECONDS = 30;
+
+    private static final AtomicInteger INIT_THREAD_COUNTER = new AtomicInteger();
+
+    private static final ExecutorService INIT_EXECUTOR = Executors.newCachedThreadPool( new ThreadFactory()
+    {
+        @Override
+        public Thread newThread( Runnable runnable )
+        {
+            Thread thread = new Thread( runnable, "assistai-mcp-init-" + INIT_THREAD_COUNTER.incrementAndGet() );
+            thread.setDaemon( true );
+            return thread;
+        }
+    } );
+
     private Map<String, McpSyncClient> clients = new HashMap<>();
 
     private List<McpSyncServer>        servers = new ArrayList<>();
 
     private boolean                    initialized;
+
+    private CompletableFuture<Void>    initFuture;
 
     @Inject
     private ILog                       logger;
@@ -59,6 +83,9 @@ public class InMemoryMcpClientRegistry
 
     @Inject
     private McpServerRepository        mcpServerRepository;
+
+    @Inject
+    private BuiltinMcpToolRouter       builtinToolRouter;
 
     /**
      * Handles the shutdown process by closing all MCP clients gracefully.
@@ -74,21 +101,77 @@ public class InMemoryMcpClientRegistry
      * Loads enabled MCP clients on first use. Deferred from {@code @PostConstruct} so E4 can
      * construct {@link com.rubberjam.eclipse.assistai.springai.McpToolBridge} and related beans first.
      */
+    /**
+     * Starts MCP client loading without blocking the SWT UI thread (workbench startup, agent view).
+     */
     public void ensureInitialized()
     {
         if ( initialized )
         {
             return;
         }
+        CompletableFuture<Void> future = startInitialization();
+        if ( isUiThread() )
+        {
+            return;
+        }
+        awaitInitialization( future );
+    }
+
+    /**
+     * Ensures clients are loaded and initialized; blocks until ready (for tool calls and preference status).
+     */
+    public void ensureClientsReady()
+    {
+        if ( initialized )
+        {
+            return;
+        }
+        awaitInitialization( startInitialization() );
+    }
+
+    private CompletableFuture<Void> startInitialization()
+    {
         synchronized ( this )
         {
             if ( initialized )
             {
-                return;
+                return CompletableFuture.completedFuture( null );
             }
-            loadClients();
-            initialized = true;
+            if ( initFuture == null )
+            {
+                initFuture = CompletableFuture.runAsync( () -> {
+                    loadClients();
+                    synchronized ( InMemoryMcpClientRegistry.this )
+                    {
+                        initialized = true;
+                    }
+                }, INIT_EXECUTOR );
+            }
+            return initFuture;
         }
+    }
+
+    private void awaitInitialization( CompletableFuture<Void> future )
+    {
+        try
+        {
+            future.get( 2, TimeUnit.MINUTES );
+        }
+        catch ( InterruptedException e )
+        {
+            Thread.currentThread().interrupt();
+            logger.error( "Interrupted while waiting for MCP client registry initialization", e );
+        }
+        catch ( ExecutionException | TimeoutException e )
+        {
+            logger.error( "MCP client registry initialization failed", e );
+        }
+    }
+
+    private static boolean isUiThread()
+    {
+        return Display.getCurrent() != null;
     }
 
     private void loadClients()
@@ -110,8 +193,8 @@ public class InMemoryMcpClientRegistry
         try
         {
             logger.info( "Initializing MCP client: " + client.getKey()  );
-            CompletableFuture.supplyAsync( () -> client.getValue().initialize() )
-                             .get( 3, TimeUnit.SECONDS );
+            CompletableFuture.supplyAsync( () -> client.getValue().initialize(), INIT_EXECUTOR )
+                             .get( CLIENT_INIT_TIMEOUT_SECONDS, TimeUnit.SECONDS );
             logger.info( "Sucessfully initialized MCP client: " + client.getKey()  );
         }
         catch ( InterruptedException | ExecutionException | TimeoutException e )
@@ -247,13 +330,13 @@ public class InMemoryMcpClientRegistry
      */
     public Map<String, McpSyncClient> listClients()
     {
-        ensureInitialized();
+        ensureClientsReady();
         return clients;
     }
     
     public Map<String, McpSyncClient> listEnabledClients()
     {
-        ensureInitialized();
+        ensureClientsReady();
     	// map server name to its enabled status
     	Map<String, Boolean> enabled = mcpServerRepository.listStoredServers().stream()
     													  .collect( Collectors.toMap(McpServerDescriptor::name, McpServerDescriptor::enabled));
@@ -272,7 +355,7 @@ public class InMemoryMcpClientRegistry
      */
     public Optional<McpSyncClient> findClient( String clientName )
     {
-        ensureInitialized();
+        ensureClientsReady();
         return Optional.ofNullable( clients.get( clientName ) );
     }
 
@@ -282,7 +365,12 @@ public class InMemoryMcpClientRegistry
         clients.clear();
         servers.clear();
         initialized = false;
-        ensureInitialized();
+        initFuture = null;
+        if ( builtinToolRouter != null )
+        {
+            builtinToolRouter.clearCache();
+        }
+        ensureClientsReady();
     }
 
     

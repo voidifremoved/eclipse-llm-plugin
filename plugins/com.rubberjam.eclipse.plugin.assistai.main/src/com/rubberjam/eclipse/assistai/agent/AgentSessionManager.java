@@ -270,6 +270,22 @@ public class AgentSessionManager
         persistTabs();
     }
 
+    /**
+     * Rebinds MCP tool callbacks on every open agent tab (e.g. after MCP preference changes).
+     */
+    public void refreshMcpToolsOnAllSessions()
+    {
+        ensureLoaded();
+        for ( AgentSession session : sessions.values() )
+        {
+            String modelUid = session.getCurrentModelUid();
+            if ( modelUid != null )
+            {
+                modelRepository.findById( modelUid ).ifPresent( session::switchModel );
+            }
+        }
+    }
+
     private AgentSession newSessionInternal( String modelUid, List<AgentMessageSnapshot> messages )
     {
         String systemPrompt = promptBuilder.buildSystemPrompt();

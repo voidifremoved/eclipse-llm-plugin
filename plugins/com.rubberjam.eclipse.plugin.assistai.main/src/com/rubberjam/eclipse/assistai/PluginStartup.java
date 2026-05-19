@@ -24,9 +24,9 @@ public class PluginStartup implements IStartup
             IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
             if (window != null) {
                 ILog logger = Activator.getDefault().getLog();
-                logger.info("Initializing MCP services on UI thread");
-                Activator.getDefault().make(HttpMcpServerRegistry.class);
-                Activator.getDefault().make(InMemoryMcpClientRegistry.class).ensureInitialized();
+                logger.info( "Initializing MCP services (background)" );
+                Activator.getDefault().make( HttpMcpServerRegistry.class );
+                Activator.getDefault().make( InMemoryMcpClientRegistry.class ).ensureInitialized();
             } else {
                 // Window exists but not active yet, retry
                 Display.getDefault().timerExec(500, this::waitForWorkbench);

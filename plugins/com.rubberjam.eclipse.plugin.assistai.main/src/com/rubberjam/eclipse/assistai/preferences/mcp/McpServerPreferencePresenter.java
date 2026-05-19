@@ -16,11 +16,13 @@ import java.util.stream.Collectors;
 import org.eclipse.core.runtime.ILog;
 import org.eclipse.e4.core.di.annotations.Creatable;
 
+import com.rubberjam.eclipse.assistai.Activator;
 import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor;
 import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor.EnvironmentVariable;
 import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor.McpServerDescriptorWithStatus;
 import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor.Status;
 import com.rubberjam.eclipse.assistai.mcp.http.HttpMcpServerRegistry;
+import com.rubberjam.eclipse.assistai.agent.AgentSessionManager;
 import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRegistry;
 import com.rubberjam.eclipse.assistai.mcp.McpServerRepository;
 import com.rubberjam.eclipse.assistai.mcp.remote.RemoteMcpClientFactory;
@@ -382,6 +384,7 @@ public class McpServerPreferencePresenter
     {
         clientRetistry.restart();
         httpMcpServerRegistry.restart();
+        Activator.getDefault().make( AgentSessionManager.class ).refreshMcpToolsOnAllSessions();
     }
 
     /**

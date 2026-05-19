@@ -47,11 +47,7 @@ public class AgentChatSession
     public void initialize( ModelApiDescriptor model )
     {
         this.currentModel = model;
-        ChatModel chatModel = modelRegistry.getModel( model.uid() );
-        this.chatClient = ChatClient.builder( chatModel )
-                .defaultSystem( systemPrompt )
-                .defaultToolCallbacks( toolBridge.getToolCallbacks( toolCallEventListener ) )
-                .build();
+        rebuildChatClient();
     }
 
     public void setToolCallEventListener( ToolCallEventListener listener )
@@ -59,7 +55,7 @@ public class AgentChatSession
         this.toolCallEventListener = listener != null ? listener : ToolCallEventListener.noop();
         if ( currentModel != null )
         {
-            initialize( currentModel );
+            rebuildChatClient();
         }
     }
 
@@ -75,10 +71,11 @@ public class AgentChatSession
 
     public Flux<AgentStreamChunk> sendMessage( String text, List<Attachment> attachments, String messageId )
     {
-        if ( chatClient == null )
+        if ( currentModel == null )
         {
             throw new IllegalStateException( "Agent chat session not initialized with a model." );
         }
+        rebuildChatClient();
 
         ChatMessage userChatMsg = new ChatMessage( messageId, "user" );
         userChatMsg.setContent( text );
@@ -127,10 +124,8 @@ public class AgentChatSession
 
     public void switchModel( ModelApiDescriptor newModel )
     {
-        if ( !newModel.equals( this.currentModel ) )
-        {
-            initialize( newModel );
-        }
+        this.currentModel = newModel;
+        rebuildChatClient();
     }
 
     public void clear()
@@ -202,6 +197,22 @@ public class AgentChatSession
     public String getSessionId()
     {
         return sessionId;
+    }
+
+    private void rebuildChatClient()
+    {
+        if ( currentModel == null )
+        {
+            return;
+        }
+        ChatModel chatModel = modelRegistry.getModel( currentModel.uid() );
+        ChatClient.Builder builder = ChatClient.builder( chatModel )
+                .defaultSystem( systemPrompt );
+        if ( currentModel.functionCalling() )
+        {
+            builder.defaultToolCallbacks( toolBridge.getToolCallbacks( toolCallEventListener ) );
+        }
+        this.chatClient = builder.build();
     }
 
     private AgentStreamChunk toStreamChunk( ChatResponse chatResponse )

@@ -24,7 +24,6 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
-import reactor.core.scheduler.Schedulers;
 /**
  * An in-memory transport implementation that allows client and server to communicate
  * within the same JVM process. This transport is useful for testing and scenarios where
@@ -60,14 +59,17 @@ public class InMemoryTransport
         Sinks.Many<String> clientErrorSink = Sinks.many().unicast().onBackpressureBuffer();
         Sinks.Many<String> serverErrorSink = Sinks.many().unicast().onBackpressureBuffer();
 
+        McpTransportExecutor transportExecutor = new McpTransportExecutor();
+        reactor.core.scheduler.Scheduler transportScheduler = transportExecutor.getScheduler();
+
         // Create the transports
         InMemoryClientTransport clientTransport = new InMemoryClientTransport(
-                serverToClientQueue, clientToServerQueue, clientErrorSink, jsonMapper, logger);
+                serverToClientQueue, clientToServerQueue, clientErrorSink, jsonMapper, logger, transportExecutor, transportScheduler );
         
         InMemoryServerTransportProvider serverTransportProvider = new InMemoryServerTransportProvider(
-                jsonMapper, clientToServerQueue, serverToClientQueue, serverErrorSink, logger);
+                jsonMapper, clientToServerQueue, serverToClientQueue, serverErrorSink, logger, transportExecutor, transportScheduler );
 
-        return new TransportPair(clientTransport, serverTransportProvider);
+        return new TransportPair(clientTransport, serverTransportProvider, transportExecutor);
     }
 
     /**
@@ -86,10 +88,13 @@ public class InMemoryTransport
     public static class TransportPair {
         private final McpClientTransport clientTransport;
         private final McpServerTransportProvider serverTransport;
+        private final McpTransportExecutor transportExecutor;
 
-        TransportPair(McpClientTransport clientTransport, McpServerTransportProvider serverTransport) {
+        TransportPair( McpClientTransport clientTransport, McpServerTransportProvider serverTransport, McpTransportExecutor transportExecutor )
+        {
             this.clientTransport = clientTransport;
             this.serverTransport = serverTransport;
+            this.transportExecutor = transportExecutor;
         }
 
         public McpClientTransport getClientTransport() {
@@ -111,6 +116,8 @@ public class InMemoryTransport
         private final Sinks.Many<String> errorSink;
         private final McpJsonMapper jsonMapper;
         private final ILog logger;
+        private final McpTransportExecutor transportExecutor;
+        private final reactor.core.scheduler.Scheduler transportScheduler;
         private volatile boolean isClosing = false;
 
         InMemoryClientTransport(
@@ -118,7 +125,10 @@ public class InMemoryTransport
                 BlockingQueue<McpSchema.JSONRPCMessage> outboundQueue,
                 Sinks.Many<String> errorSink,
                 McpJsonMapper jsonMapper,
-                ILog logger ) {
+                ILog logger,
+                McpTransportExecutor transportExecutor,
+                reactor.core.scheduler.Scheduler transportScheduler )
+        {
             
             Assert.notNull(inboundQueue, "Inbound queue cannot be null");
             Assert.notNull(outboundQueue, "Outbound queue cannot be null");
@@ -131,6 +141,8 @@ public class InMemoryTransport
             this.errorSink = errorSink;
             this.jsonMapper = jsonMapper;
             this.logger = logger;
+            this.transportExecutor = transportExecutor;
+            this.transportScheduler = transportScheduler;
             this.inboundSink = Sinks.many().unicast().onBackpressureBuffer();
         }
 
@@ -140,8 +152,8 @@ public class InMemoryTransport
                 // Set up message processing
                 setupMessageHandler(handler);
                 
-                // Start a background thread to poll messages from the inbound queue
-                Schedulers.boundedElastic().schedule(() -> {
+                // Dedicated I/O thread (not the reactor pool — avoids starving initialize/handshake)
+                transportExecutor.startBlockingIoLoop( () -> {
                     try {
                         while (!isClosing) {
                             McpSchema.JSONRPCMessage message = inboundQueue.take();
@@ -162,7 +174,7 @@ public class InMemoryTransport
                         }
                     }
                 });
-            }).subscribeOn(Schedulers.boundedElastic()).then();
+            }).subscribeOn( transportScheduler ).then();
         }
 
         private void setupMessageHandler(Function<Mono<McpSchema.JSONRPCMessage>, Mono<McpSchema.JSONRPCMessage>> handler) {
@@ -191,7 +203,7 @@ public class InMemoryTransport
                 }
             })
             .flatMap(success -> success ? Mono.empty() : Mono.error(new RuntimeException("Failed to enqueue message")))
-            .subscribeOn(Schedulers.boundedElastic()).then();
+            .subscribeOn( transportScheduler ).then();
         }
 
         @Override
@@ -200,7 +212,8 @@ public class InMemoryTransport
                 isClosing = true;
                 inboundSink.tryEmitComplete();
                 errorSink.tryEmitComplete();
-            }).then().subscribeOn(Schedulers.boundedElastic());
+                transportExecutor.shutdown();
+            }).then().subscribeOn( transportScheduler );
         }
 
         @Override
@@ -222,13 +235,18 @@ public class InMemoryTransport
         private final ILog logger;
         private McpServerSession session;
         private final AtomicBoolean isClosing = new AtomicBoolean(false);
+        private final McpTransportExecutor transportExecutor;
+        private final reactor.core.scheduler.Scheduler transportScheduler;
 
         InMemoryServerTransportProvider(
                 McpJsonMapper jsonMapper,
                 BlockingQueue<McpSchema.JSONRPCMessage> inboundQueue,
                 BlockingQueue<McpSchema.JSONRPCMessage> outboundQueue,
                 Sinks.Many<String> errorSink,
-                ILog logger) {
+                ILog logger,
+                McpTransportExecutor transportExecutor,
+                reactor.core.scheduler.Scheduler transportScheduler )
+        {
             
             Assert.notNull(jsonMapper, "JsonMapper cannot be null");
             Assert.notNull(inboundQueue, "Inbound queue cannot be null");
@@ -241,6 +259,8 @@ public class InMemoryTransport
             this.outboundQueue = outboundQueue;
             this.errorSink = errorSink;
             this.logger = logger;
+            this.transportExecutor = transportExecutor;
+            this.transportScheduler = transportScheduler;
         }
 
         @Override
@@ -308,6 +328,7 @@ public class InMemoryTransport
                 return Mono.fromRunnable(() -> {
                     isClosing.set(true);
                     inboundSink.tryEmitComplete();
+                    transportExecutor.shutdown();
                 });
             }
 
@@ -337,7 +358,7 @@ public class InMemoryTransport
 
             private void startInboundProcessing() {
                 if (isStarted.compareAndSet(false, true)) {
-                    Schedulers.boundedElastic().schedule(() -> {
+                    transportExecutor.startBlockingIoLoop( () -> {
                         try {
                             while (!isClosing.get()) {
                                 McpSchema.JSONRPCMessage message = inboundQueue.take();
@@ -360,7 +381,7 @@ public class InMemoryTransport
 
             private void startOutboundProcessing() {
                 outboundSink.asFlux()
-                    .publishOn(Schedulers.boundedElastic())
+                    .publishOn( transportScheduler )
                     .handle((message, sink) -> {
                         if (message != null && !isClosing.get()) {
                             try {

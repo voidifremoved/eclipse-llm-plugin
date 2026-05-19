@@ -11,16 +11,29 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Predicate;
 
+import com.rubberjam.eclipse.assistai.Activator;
 import com.rubberjam.eclipse.assistai.mcp.annotations.Tool;
 import com.rubberjam.eclipse.assistai.mcp.annotations.ToolParam;
+import com.rubberjam.eclipse.assistai.tools.UISynchronizeCallable;
 
+/**
+ * Invokes {@link Tool}-annotated methods. Eclipse workspace/JDT work must run on the SWT UI thread.
+ */
 public class ToolExecutor
 {
-    Object functions;
+    private final Object functions;
+
+    private final UISynchronizeCallable uiSync;
 
     public ToolExecutor( Object functions )
     {
+        this( functions, null );
+    }
+
+    public ToolExecutor( Object functions, UISynchronizeCallable uiSync )
+    {
         this.functions = functions;
+        this.uiSync = uiSync != null ? uiSync : Activator.getDefault().make( UISynchronizeCallable.class );
     }
 
     /**
@@ -40,23 +53,31 @@ public class ToolExecutor
 
     public CompletableFuture<Object> call( String name, Map<String, Object> args )
     {
-        Method method = getFunctionCallbackByName( name ).orElseThrow( () -> new RuntimeException("Tool " + name + " not found!" ) );
-        method.getAnnotationsByType( com.rubberjam.eclipse.assistai.mcp.annotations.ToolParam.class );
+        Method method = getFunctionCallbackByName( name ).orElseThrow( () -> new RuntimeException( "Tool " + name + " not found!" ) );
         Object[] argValues = mapArguments( method, args );
-        CompletableFuture<Object> future = CompletableFuture.supplyAsync( () -> invokeMethod( method, argValues ) );
-        return future;
+        Object result = uiSync.syncCall( () -> invokeMethod( method, argValues ) );
+        return CompletableFuture.completedFuture( result );
     }
+
     private Object invokeMethod( Method method, Object[] args )
     {
         try
         {
             return method.invoke( functions, args );
         }
-        catch ( IllegalAccessException | IllegalArgumentException | InvocationTargetException e )
+        catch ( InvocationTargetException e )
+        {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            if ( cause instanceof RuntimeException runtime )
+            {
+                throw runtime;
+            }
+            throw new RuntimeException( cause );
+        }
+        catch ( IllegalAccessException | IllegalArgumentException e )
         {
             throw new RuntimeException( e );
         }
-
     }
 
     public CompletableFuture<Object> call( String name, String[] args )

@@ -1,6 +1,7 @@
 
 package com.rubberjam.eclipse.assistai.mcp.local;
 
+import java.time.Duration;
 import java.util.Objects;
 
 import org.eclipse.e4.core.di.annotations.Creatable;
@@ -28,6 +29,9 @@ import jakarta.inject.Singleton;
 @Singleton
 public class InMemoryClientServerFactory
 {
+    /** Eclipse tools (build, tests) can run longer than HTTP discovery clients. */
+    private static final Duration TOOL_REQUEST_TIMEOUT = Duration.ofMinutes( 5 );
+
     private final McpServerFactory mcpServerFactory;
     private final InMemoryTransport inMemoryTransport;
     /**
@@ -83,6 +87,7 @@ public class InMemoryClientServerFactory
     {
         McpSyncClient client = McpClient.sync( clientTransport )
                 .clientInfo( info )
+                .requestTimeout( TOOL_REQUEST_TIMEOUT )
                 .jsonSchemaValidator( new JacksonJsonSchemaValidatorSupplier().get() )
                 .build();
         return client;
