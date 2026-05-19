@@ -93,13 +93,6 @@ public class ModelPreferencePage extends FieldEditorPreferencePage implements IW
             completionComposite
         );
         addField( completionEnabled );
-
-        BooleanFieldEditor completionUseSpringAi = new BooleanFieldEditor(
-            PreferenceConstants.ASSISTAI_COMPLETION_USE_SPRING_AI,
-            "Use &Spring AI for completion (experimental)",
-            completionComposite
-        );
-        addField( completionUseSpringAi );
         
         // Add "Use Chat Model" option plus all available models
         String[][] completionModelEntries = new String[models.size() + 1][2];

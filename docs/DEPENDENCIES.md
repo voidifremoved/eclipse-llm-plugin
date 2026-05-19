@@ -35,6 +35,8 @@ To list bundles in the built update site:
 
 See `docs/OSGI_BUNDLES.md` for embed vs wrapper policy.
 
+LLM access for agent chat and code completion goes through Spring AI (`com.rubberjam.eclipse.assistai.springai`); legacy hand-rolled HTTP clients were removed in Phase 5.
+
 To list wrapped bundle symbolic names from a Tycho build log:
 
 ```powershell

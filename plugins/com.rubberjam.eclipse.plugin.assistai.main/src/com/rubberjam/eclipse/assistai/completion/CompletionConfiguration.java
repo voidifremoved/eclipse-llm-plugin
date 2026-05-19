@@ -53,12 +53,4 @@ public class CompletionConfiguration {
         return hotkey;
     }
 
-    /**
-     * When true, completion requests use Spring AI ({@link SpringAiStreamingCompletionClient})
-     * instead of legacy {@code *StreamJavaHttpClient} implementations.
-     */
-    public boolean useSpringAi() {
-        return preferenceStore.getBoolean( PreferenceConstants.ASSISTAI_COMPLETION_USE_SPRING_AI );
-    }
-    
 }

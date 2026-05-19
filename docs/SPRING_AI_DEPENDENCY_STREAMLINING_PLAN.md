@@ -12,7 +12,7 @@ Make the Eclipse plugin build and dependency model boring, repeatable, and easie
 | 2 Separate source from output | **Complete** | `site/` jars gitignored/removed; CI deploys from `releng/.../target/repository`. |
 | 3 Centralise versions | **Mostly complete** | Parent POM properties + `docs/DEPENDENCIES.md`. Kept `includeDependencyDepth=direct` with explicit 2nd-level roots; `list-wrapped-bundles.ps1` added. |
 | 4 Isolate Spring AI | **Mostly complete** | Package `com.rubberjam.eclipse.assistai.springai` in main plugin (factory, registry, providers, `MessageAdapter`). Separate OSGi bundle deferred until shared API bundle exists. `McpToolBridge` remains in `agent`. |
-| 5 Provider migration | **In progress** | Agent chat on Spring AI. Completion: optional Spring AI path (`AssistAICompletionUseSpringAi`, default off). Legacy HTTP clients remain for chat/completion fallback. |
+| 5 Provider migration | **Mostly complete** | Agent chat and code completion on Spring AI. Legacy `*StreamJavaHttpClient` stack and `ChatViewPresenter` removed. |
 | 6 Own OSGi metadata | **Started** | OkHttp owned wrapper; `scripts/inventory-p2-repository.ps1` + `docs/OSGI_BUNDLES.md`. |
 | 7 Repository verification | **Mostly complete** | Feature-only `category.xml` + `includeAllDependencies`. Full `mvn clean verify` passes. Install steps documented in `BUILDING.md`. |
 
@@ -54,12 +54,11 @@ Make the Eclipse plugin build and dependency model boring, repeatable, and easie
 ### Phase 5: Transition Providers to Spring AI
 
 - [x] Agent chat UI uses Spring AI for all providers via `ChatModelFactory` / `OpenAiCompatibleChatModelProvider` / Anthropic / Google GenAI
-- [x] Code completion: Spring AI path behind preference (`AssistAICompletionUseSpringAi`, experimental, default off)
+- [x] Code completion uses Spring AI only (`SpringAiStreamingCompletionClient`)
 - [x] `McpToolBridge` filters tools by `ConversationContext.allowedTools` (completion tool subset)
-- [ ] OpenAI-compatible: remove legacy `OpenAIStreamJavaHttpClient` after completion parity verified
-- [ ] Anthropic / Gemini / Grok / DeepSeek legacy clients — remove after parity
-- [ ] MCP tool bridge integration parity tests for Spring AI completion path
-- [ ] Remove deprecated `ChatViewPresenter` / `SendConversationJob` when confirmed unused
+- [x] Removed legacy HTTP clients (`OpenAIStreamJavaHttpClient`, Anthropic, Gemini, Grok, DeepSeek, OpenAI Responses)
+- [x] Removed deprecated `ChatViewPresenter`, `SendConversationJob`, `ExecuteFunctionCallJob`, and related subscribers
+- [ ] MCP tool bridge integration tests for Spring AI completion path
 
 ### Phase 6: Own OSGi Metadata
 
@@ -79,7 +78,7 @@ Make the Eclipse plugin build and dependency model boring, repeatable, and easie
 
 ## Target architecture
 
-- **Main plugin** — Eclipse UI, MCP, preferences, legacy HTTP clients, agent UI (`AgentSession`, `McpToolBridge`), and the **`com.rubberjam.eclipse.assistai.springai`** package (factory, registry, providers, message adapter)
+- **Main plugin** — Eclipse UI, MCP, preferences, agent UI (`AgentSession`, `McpToolBridge`), Spring AI completion, and the **`com.rubberjam.eclipse.assistai.springai`** package (factory, registry, providers, message adapter)
 - **Future Spring AI OSGi bundle** — optional once a small `assistai.core` API bundle breaks the reactor cycle
 - **OkHttp wrapper** — `wrapped.com.squareup.okhttp3.okhttp`
 
@@ -88,6 +87,6 @@ See `docs/DEPENDENCIES.md` for how to add dependencies.
 ## Immediate next work
 
 1. Generate Maven wrapper when local PKIX/trust is fixed; switch CI to `mvnw`.
-2. Test Spring AI completion (`Use Spring AI for completion`) with OpenAI-compatible model; then remove legacy completion HTTP path.
+2. Add integration tests for Spring AI completion with MCP tool filtering.
 3. Phase 6: run `inventory-p2-repository.ps1` on release builds; decide owned wrappers for Tomcat / MCP JSON.
-4. Optional: extract `assistai.core` API bundle so Spring AI can become a separate plugin without a reactor cycle.
+4. Phase 4: thin `AgentSession` behind SPI; optional `assistai.core` bundle for separate Spring AI plugin.
