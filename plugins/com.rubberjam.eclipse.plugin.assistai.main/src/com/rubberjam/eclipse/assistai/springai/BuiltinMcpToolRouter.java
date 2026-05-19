@@ -11,6 +11,7 @@ import org.eclipse.e4.core.di.annotations.Creatable;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rubberjam.eclipse.assistai.agent.AgentCompilationErrorScope;
 import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor;
 import com.rubberjam.eclipse.assistai.mcp.McpServerRepository;
 import com.rubberjam.eclipse.assistai.mcp.ToolExecutor;
@@ -35,15 +36,21 @@ public final class BuiltinMcpToolRouter
 
     private final UISynchronizeCallable uiSync;
 
+    private final AgentCompilationErrorScope compilationErrorScope;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private volatile Map<String, ToolExecutor> toolsByName;
 
     @Inject
-    public BuiltinMcpToolRouter( McpServerRepository serverRepository, UISynchronizeCallable uiSync )
+    public BuiltinMcpToolRouter(
+            McpServerRepository serverRepository,
+            UISynchronizeCallable uiSync,
+            AgentCompilationErrorScope compilationErrorScope )
     {
         this.serverRepository = serverRepository;
         this.uiSync = uiSync;
+        this.compilationErrorScope = compilationErrorScope;
     }
 
     public void clearCache()
@@ -75,6 +82,10 @@ public final class BuiltinMcpToolRouter
         }
         Map<String, Object> args = parseToolInput( toolInputJson );
         String bareToolName = AssistAiMcpToolNames.bareToolName( toolName );
+        if ( "getCompilationErrors".equals( bareToolName ) )
+        {
+            args = applyCompilationErrorScope( args );
+        }
         Object result = executor.call( bareToolName, args ).join();
         if ( result == null )
         {
@@ -143,5 +154,27 @@ public final class BuiltinMcpToolRouter
         {
             return Collections.emptyMap();
         }
+    }
+
+    private Map<String, Object> applyCompilationErrorScope( Map<String, Object> args )
+    {
+        if ( compilationErrorScope == null || !compilationErrorScope.isActive() )
+        {
+            return args;
+        }
+        AgentCompilationErrorScope.Scope scope = compilationErrorScope.get();
+        Map<String, Object> merged = new HashMap<>( args );
+        Object existingFile = merged.get( "filePath" );
+        if ( existingFile == null || String.valueOf( existingFile ).isBlank() )
+        {
+            merged.put( "filePath", scope.filePath() );
+        }
+        Object existingProject = merged.get( "projectName" );
+        if ( ( existingProject == null || String.valueOf( existingProject ).isBlank() )
+                && scope.projectName() != null && !scope.projectName().isBlank() )
+        {
+            merged.put( "projectName", scope.projectName() );
+        }
+        return merged;
     }
 }

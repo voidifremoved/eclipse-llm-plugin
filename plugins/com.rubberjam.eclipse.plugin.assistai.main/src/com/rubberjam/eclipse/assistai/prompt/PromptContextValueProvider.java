@@ -65,7 +65,15 @@ public class PromptContextValueProvider
             case CURRENT_FILE_NAME -> safeGetString( () -> editorService.getCurrentlyOpenedFile().map( IFile::getName ).orElse( "" ) );
 	        case CURRENT_FILE_CONTENT -> safeGetString(() -> cacheResource( editorService.getCurrentlyOpenedFileContentWithResource() )  );
 	        case SELECTED_CONTENT -> safeGetString(() -> editorService.getEditorSelection() );
-	        case ERRORS -> safeGetString( () -> codeAnalysisService.getCompilationErrors( getContextValue(CURRENT_PROJECT_NAME), "ERROR", -1 ) );
+	        case ERRORS -> safeGetString( () -> {
+	            String project = getContextValue( CURRENT_PROJECT_NAME );
+	            String file = getContextValue( CURRENT_FILE_PATH );
+	            if ( file == null || file.isBlank() )
+	            {
+	                return codeAnalysisService.getCompilationErrors( project, "ERROR", -1, null );
+	            }
+	            return codeAnalysisService.getCompilationErrors( project, "ERROR", -1, file );
+	        } );
 	        case CONSOLE_OUTPUT -> safeGetString( () -> cacheResource( consoleService.getConsoleOutputWithResource( null, 100, true) ) ) ;
             case GIT_DIFF -> safeGetString( () -> gitService.getCurrentDiff() ) ;
             case FILE_EXTENSION -> safeGetString( () -> editorService.getCurrentlyOpenedFile().map( IFile::getFileExtension ).orElse( "" ) );

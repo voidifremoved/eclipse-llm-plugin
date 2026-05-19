@@ -32,6 +32,7 @@ import org.eclipse.jdt.internal.corext.callhierarchy.CallHierarchy;
 import org.eclipse.jdt.internal.corext.callhierarchy.MethodWrapper;
 import org.eclipse.jdt.ui.text.java.IJavaCompletionProposal;
 
+import com.rubberjam.eclipse.assistai.agent.AgentCompilationErrorScope;
 import com.rubberjam.eclipse.assistai.services.AiIgnoreService;
 
 import jakarta.inject.Inject;
@@ -48,6 +49,9 @@ public class CodeAnalysisService
     
     @Inject
     ILog logger;
+
+    @Inject
+    AgentCompilationErrorScope compilationErrorScope;
 
     @Inject
     AiIgnoreService aiIgnoreService;
@@ -161,7 +165,16 @@ public class CodeAnalysisService
      * @param maxResults Maximum number of problems to return
      * @return A formatted string containing compilation errors
      */
-    public String getCompilationErrors(String projectName, String severity, Integer maxResults)
+    public String getCompilationErrors( String projectName, String severity, Integer maxResults )
+    {
+        return getCompilationErrors( projectName, severity, maxResults, null );
+    }
+
+    public String getCompilationErrors(
+            String projectName,
+            String severity,
+            Integer maxResults,
+            String filePath )
     {
         try 
         {
@@ -214,15 +227,27 @@ public class CodeAnalysisService
                 markers = ResourcesPlugin.getWorkspace().getRoot().findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE);
             }
             
+            boolean filterByFile = filePath != null && !filePath.isBlank();
+            if ( filterByFile )
+            {
+                result.append( "File filter: " ).append( filePath ).append( "\n\n" );
+            }
+
             // Filter and sort markers
             List<IMarker> filteredMarkers = new ArrayList<>();
-            for (IMarker marker : markers) 
+            for ( IMarker marker : markers )
             {
-                Integer severityValue = (Integer) marker.getAttribute(IMarker.SEVERITY);
-                if (severityFilter == -1 || (severityValue != null && severityValue.intValue() == severityFilter)) 
+                Integer severityValue = (Integer) marker.getAttribute( IMarker.SEVERITY );
+                if ( severityFilter != -1
+                        && ( severityValue == null || severityValue.intValue() != severityFilter ) )
                 {
-                    filteredMarkers.add(marker);
+                    continue;
                 }
+                if ( filterByFile && !markerMatchesFilePath( marker, projectName, filePath ) )
+                {
+                    continue;
+                }
+                filteredMarkers.add( marker );
             }
             
             // Sort by severity (errors first, then warnings)
@@ -248,9 +273,16 @@ public class CodeAnalysisService
                 result.append("Found ").append(filteredMarkers.size()).append(" problems.\n\n");
             }
             
-            if (filteredMarkers.isEmpty()) 
+            if ( filteredMarkers.isEmpty() )
             {
-                result.append("No compilation problems found with the specified criteria.");
+                if ( filterByFile )
+                {
+                    result.append( "No compilation problems found in the specified file." );
+                }
+                else
+                {
+                    result.append( "No compilation problems found with the specified criteria." );
+                }
                 return result.toString();
             }
             
@@ -368,6 +400,70 @@ public class CodeAnalysisService
             throw new RuntimeException( "Error retrieving compilation problems: " + ExceptionUtils.getStackTrace(  e )  );
         }
 
+    }
+
+    static boolean markerMatchesFilePath( IMarker marker, String projectName, String filePath )
+            throws CoreException
+    {
+        if ( filePath == null || filePath.isBlank() )
+        {
+            return true;
+        }
+        IResource resource = marker.getResource();
+        if ( resource == null )
+        {
+            return false;
+        }
+        String want = normalizeResourcePath( filePath );
+        String full = normalizeResourcePath( resource.getFullPath().toString() );
+        if ( pathsReferToSameFile( full, want ) )
+        {
+            return true;
+        }
+        if ( resource instanceof IFile file )
+        {
+            String projectRelative = normalizeResourcePath( file.getProjectRelativePath().toString() );
+            if ( pathsReferToSameFile( projectRelative, want ) )
+            {
+                return true;
+            }
+            if ( projectName != null && !projectName.isBlank() )
+            {
+                String withProject = normalizeResourcePath( projectName + "/" + projectRelative );
+                if ( pathsReferToSameFile( withProject, want ) )
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static String normalizeResourcePath( String path )
+    {
+        if ( path == null )
+        {
+            return "";
+        }
+        String normalized = path.replace( '\\', '/' ).trim();
+        while ( normalized.startsWith( "/" ) )
+        {
+            normalized = normalized.substring( 1 );
+        }
+        return normalized;
+    }
+
+    public static boolean pathsReferToSameFile( String pathA, String pathB )
+    {
+        if ( pathA.isEmpty() || pathB.isEmpty() )
+        {
+            return false;
+        }
+        if ( pathA.equals( pathB ) )
+        {
+            return true;
+        }
+        return pathA.endsWith( "/" + pathB ) || pathB.endsWith( "/" + pathA );
     }
     
     /**
@@ -752,10 +848,20 @@ public class CodeAnalysisService
     {
         try
         {
-            IMarker marker = findMarkerById(markerId);
-            if (marker == null)
+            IMarker marker = findMarkerById( markerId );
+            if ( marker == null )
             {
                 return "Error: Marker with ID " + markerId + " not found. It may have been resolved already.";
+            }
+            AgentCompilationErrorScope.Scope scope = compilationErrorScope != null
+                    ? compilationErrorScope.get()
+                    : null;
+            if ( scope != null && scope.filePath() != null && !scope.filePath().isBlank()
+                    && !markerMatchesFilePath( marker, scope.projectName(), scope.filePath() ) )
+            {
+                return "Error: Quick fix rejected — this request is limited to errors in "
+                        + scope.filePath()
+                        + ". Re-run getCompilationErrors with that filePath only.";
             }
 
             List<QuickFix> fixes = collectQuickFixes(marker);

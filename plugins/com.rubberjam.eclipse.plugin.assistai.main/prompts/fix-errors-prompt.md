@@ -1,34 +1,21 @@
-<context>
+Fix compilation errors in the **currently open file only** (${currentFileName} in project ${currentProjectName}).
+
+Path: ${currentFilePath}
+
+<file>
 ${currentFileContent}
+</file>
+
+<selection>
 ${selectedContent}
+</selection>
+
+<errors in this file only>
 ${errors}
-${consoleOutput}
-</context>
+</errors>
 
-
-The file ${currentFileName} in the project ${currentProjectName} as issues.
-
-Analyze the compile errors, and console output, and provide information how to fix the code. 
-
-Ask user if he would like you to prepare a patch. If user confirms in the next message synthesize your corrections in the form of a patch in `diff` format. Make sure to reference the full path of the file ${currentFileName} in the patch header.
-
-
-USING DIFFS: When you see a diff:
- - Make sure to reference the full path of the file in the patch header
- - Lines with "+" were added
- - Lines with "-" were removed
- - @@ markers show change locations
-
-Example patch output:
-
-```diff
---- ${currentFilePath}   2018-01-11 10:39:38.237464052 +0000                                                                                              
-+++ ${currentFilePath}   2018-01-11 10:40:00.323423021 +0000                                                                                              
-@@ -1,5 +1,5 @@
-package com.example;
-
-public static void main(String[] args) {
--       // implement me
-+       System.out.println("Hello World!");
-}
-```
+Instructions:
+- Use eclipse-ide__getCompilationErrors with projectName=${currentProjectName} and filePath=${currentFilePath}.
+- Fix problems only in this file using eclipse-ide__executeQuickFix and/or eclipse-coder__applyPatch (or replaceString).
+- Re-run getCompilationErrors with the same filePath until this file is clean or you are blocked.
+- Do not fix other files, change the build, or run Maven unless the user explicitly asked.

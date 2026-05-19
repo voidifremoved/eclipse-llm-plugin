@@ -152,14 +152,18 @@ public class EclipseIntegrationsMcpServer
                 Optional.ofNullable(maxDepth).map(Integer::parseInt).orElse(0));
     }
 
-    @Tool(name = "getCompilationErrors", description = "Retrieves compilation errors and problems from the current workspace or a specific project.", type = "object")
+    @Tool(name = "getCompilationErrors", description = "Retrieves compilation errors and problems from the workspace, a project, or a single file. When the user asks to fix the current/open file, pass filePath (project-relative path from the system prompt).", type = "object")
     public String getCompilationErrors(
             @ToolParam(name = "projectName", description = "The name of the specific project to check (optional, leave empty for all projects)", required = false) String projectName,
             @ToolParam(name = "severity", description = "Filter by severity level: 'ERROR', 'WARNING', or 'ALL' (default)", required = false) String severity,
-            @ToolParam(name = "maxResults", description = "Maximum number of problems to return (default: 50)", required = false) String maxResults)
+            @ToolParam(name = "maxResults", description = "Maximum number of problems to return (default: 50)", required = false) String maxResults,
+            @ToolParam(name = "filePath", description = "Optional project-relative file path (e.g. src/com/example/Foo.java). When set, only problems in that file are returned.", required = false) String filePath)
     {
-        return codeAnalysisService.getCompilationErrors(projectName, severity,
-                Optional.ofNullable(maxResults).map(Integer::parseInt).orElse(0));
+        return codeAnalysisService.getCompilationErrors(
+                projectName,
+                severity,
+                Optional.ofNullable( maxResults ).map( Integer::parseInt ).orElse( 0 ),
+                filePath );
     }
 
     @Tool(name = "readProjectResource", description = "Read the content of a text resource from a specified project. Supports line numbers, reading specific line ranges, and collapsing Java imports to reduce token usage.", type = "object")
