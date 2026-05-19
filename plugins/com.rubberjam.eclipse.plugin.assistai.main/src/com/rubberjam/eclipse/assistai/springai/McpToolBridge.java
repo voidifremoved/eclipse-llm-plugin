@@ -1,9 +1,12 @@
 package com.rubberjam.eclipse.assistai.springai;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeoutException;
 
 import org.eclipse.e4.core.di.annotations.Creatable;
@@ -22,7 +25,9 @@ import jakarta.inject.Singleton;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.DefaultToolDefinition;
 import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.ai.tool.metadata.DefaultToolMetadata;
 import org.springframework.ai.tool.metadata.ToolMetadata;
 
 /**
@@ -63,8 +68,23 @@ public class McpToolBridge
     {
         InMemoryMcpClientRegistry registry = mcpClientRegistryProvider.get();
         registry.ensureClientsReady();
-        List<McpSyncClient> clients = new ArrayList<>( registry.listEnabledClients().values() );
-        List<ToolCallback> callbacks = SyncMcpToolCallbackProvider.syncToolCallbacks( clients );
+        Map<String, McpSyncClient> clientsByServer = registry.listEnabledClients();
+        List<ToolCallback> callbacks = new ArrayList<>();
+        for ( Map.Entry<String, McpSyncClient> entry : clientsByServer.entrySet() )
+        {
+            String serverName = entry.getKey();
+            McpSyncClient client = entry.getValue();
+            AssistAiMcpToolNamePrefixGenerator prefixGenerator = new AssistAiMcpToolNamePrefixGenerator( serverName );
+            ToolCallback[] perServer = SyncMcpToolCallbackProvider.builder()
+                    .mcpClients( client )
+                    .toolNamePrefixGenerator( prefixGenerator )
+                    .build()
+                    .getToolCallbacks();
+            for ( ToolCallback callback : perServer )
+            {
+                callbacks.add( callback );
+            }
+        }
         List<ToolCallback> wrapped = new ArrayList<>();
         for ( ToolCallback callback : callbacks )
         {
@@ -75,7 +95,84 @@ public class McpToolBridge
             }
             wrapped.add( new ObservableToolCallback( callback, listener, toolInvocationExecutor, builtinToolRouter ) );
         }
+        addBuiltinFallbackCallbacks( context, listener, wrapped );
         return wrapped.toArray( new ToolCallback[0] );
+    }
+
+    /**
+     * Registers built-in tools missing from MCP discovery so Spring AI can resolve names like
+     * {@code eclipse-ide__getCompilationErrors}.
+     */
+    private void addBuiltinFallbackCallbacks(
+            ConversationContext context,
+            ToolCallEventListener listener,
+            List<ToolCallback> wrapped )
+    {
+        if ( context == null || context.getAllowedTools() == null )
+        {
+            return;
+        }
+        Set<String> registered = new HashSet<>();
+        for ( ToolCallback callback : wrapped )
+        {
+            registered.add( callback.getToolDefinition().name() );
+        }
+        for ( String allowedName : context.getAllowedTools() )
+        {
+            if ( registered.contains( allowedName ) )
+            {
+                continue;
+            }
+            if ( !builtinToolRouter.isRegistered( allowedName ) )
+            {
+                continue;
+            }
+            ToolCallback fallback = new BuiltinOnlyToolCallback( allowedName );
+            wrapped.add( new ObservableToolCallback(
+                    fallback,
+                    listener,
+                    toolInvocationExecutor,
+                    builtinToolRouter ) );
+            registered.add( allowedName );
+        }
+    }
+
+    private static final class BuiltinOnlyToolCallback implements ToolCallback
+    {
+        private final ToolDefinition definition;
+
+        BuiltinOnlyToolCallback( String toolName )
+        {
+            this.definition = DefaultToolDefinition.builder()
+                    .name( toolName )
+                    .description( "Built-in Eclipse MCP tool (AssistAI in-process)." )
+                    .inputSchema( "{\"type\":\"object\",\"properties\":{}}" )
+                    .build();
+        }
+
+        @Override
+        public ToolDefinition getToolDefinition()
+        {
+            return definition;
+        }
+
+        @Override
+        public ToolMetadata getToolMetadata()
+        {
+            return DefaultToolMetadata.builder().build();
+        }
+
+        @Override
+        public String call( String toolInput )
+        {
+            return call( toolInput, null );
+        }
+
+        @Override
+        public String call( String toolInput, ToolContext toolContext )
+        {
+            throw new IllegalStateException( "Built-in tool must be routed through BuiltinMcpToolRouter" );
+        }
     }
 
     private static final class ObservableToolCallback implements ToolCallback

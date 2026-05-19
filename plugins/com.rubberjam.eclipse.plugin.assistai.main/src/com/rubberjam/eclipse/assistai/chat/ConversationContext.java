@@ -6,6 +6,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
 
+import com.rubberjam.eclipse.assistai.springai.AssistAiMcpToolNames;
+
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 
 /**
@@ -67,7 +69,7 @@ public class ConversationContext
         {
             return true; // No restrictions
         }
-        return allowedTools.contains(toolName);
+        return AssistAiMcpToolNames.matchesAllowed( toolName, allowedTools );
     }
     
     /**

@@ -32,6 +32,7 @@ import com.rubberjam.eclipse.assistai.chat.Attachment.FileContentAttachment;
 import static com.rubberjam.eclipse.assistai.tools.ImageUtilities.createPreview;
 import com.rubberjam.eclipse.assistai.chat.ChatMessage;
 import com.rubberjam.eclipse.assistai.prompt.ChatMessageFactory;
+import com.rubberjam.eclipse.assistai.prompt.PromptContextValueProvider;
 import com.rubberjam.eclipse.assistai.prompt.PromptRepository;
 import com.rubberjam.eclipse.assistai.resources.IResourceCacheListener;
 import com.rubberjam.eclipse.assistai.resources.ResourceCacheEvent;
@@ -61,6 +62,7 @@ public class AgentViewPresenter implements IResourceCacheListener
     @Inject private PartAccessor partAccessor;
     @Inject private PromptRepository promptRepository;
     @Inject private ChatMessageFactory chatMessageFactory;
+    @Inject private PromptContextValueProvider promptContext;
     @Inject private ModelApiDescriptorRepository modelRepository;
     @Inject private ILog logger;
     @Inject private CodeEditingService codeEditingService;
@@ -125,7 +127,8 @@ public class AgentViewPresenter implements IResourceCacheListener
                 }
             }
 
-            String userText = text;
+            sessionManager.refreshSystemPromptForSend( session );
+            String userText = enrichWithActiveEditorContext( text );
             String userMessageId = UUID.randomUUID().toString();
             updateTabTitle( tabId, userText );
 
@@ -748,15 +751,74 @@ public class AgentViewPresenter implements IResourceCacheListener
                 + "```json\n" + ( details != null ? details : "" ) + "\n```";
     }
 
+    /**
+     * Appends active editor path when the user refers to "this file" so the model does not ask for a path.
+     */
+    private String enrichWithActiveEditorContext( String userText )
+    {
+        if ( userText == null || userText.isBlank() || !refersToCurrentEditor( userText ) )
+        {
+            return userText;
+        }
+        String project = promptContext.getContextValue( "currentProjectName" );
+        String path = promptContext.getContextValue( "currentFilePath" );
+        if ( path == null || path.isBlank() )
+        {
+            return userText;
+        }
+        StringBuilder note = new StringBuilder();
+        note.append( "\n\n[Active editor context: " );
+        if ( project != null && !project.isBlank() )
+        {
+            note.append( "project=" ).append( project ).append( ", " );
+        }
+        note.append( "file=" ).append( path ).append( ']' );
+        return userText + note.toString();
+    }
+
+    private static boolean refersToCurrentEditor( String text )
+    {
+        String lower = text.toLowerCase();
+        return lower.contains( "this file" )
+                || lower.contains( "current file" )
+                || lower.contains( "the file" )
+                || lower.contains( "this class" )
+                || lower.contains( "errors here" )
+                || lower.contains( "fix errors" );
+    }
+
     private String toUserFacingStreamError( Throwable error )
     {
         String message = error != null && error.getMessage() != null ? error.getMessage() : "";
         if ( message.contains( "No ToolCallback found for tool name:" ) )
         {
-            return "Tool execution completed, but Spring AI returned a malformed follow-up tool call while streaming. "
-                    + "The tool result above is still available; please continue or retry the request.";
+            return "A workspace tool was invoked but is not registered with Spring AI ("
+                    + message
+                    + "). Rebuild and restart Eclipse with the latest AssistAI plugin, then check "
+                    + "Window > Preferences > Assist Agent > MCP Servers that eclipse-ide is enabled and RUNNING. "
+                    + "Retry your request with the target file open in the editor.";
+        }
+        if ( isBadRequest( error ) )
+        {
+            return "The model API rejected the request (HTTP 400). This often means invalid chat history, "
+                    + "unsupported tools, or a model/API mismatch. Try clearing the agent tab and sending again. "
+                    + "Details: " + message;
         }
         return "Error: " + message;
+    }
+
+    private static boolean isBadRequest( Throwable error )
+    {
+        Throwable current = error;
+        while ( current != null )
+        {
+            if ( "BadRequestException".equals( current.getClass().getSimpleName() ) )
+            {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     public void onSendPredefinedPrompt(com.rubberjam.eclipse.assistai.prompt.Prompts type, ChatMessage message) {

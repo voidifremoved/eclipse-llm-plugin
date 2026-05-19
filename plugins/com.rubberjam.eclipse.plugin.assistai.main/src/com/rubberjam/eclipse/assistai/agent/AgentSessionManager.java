@@ -271,6 +271,18 @@ public class AgentSessionManager
     }
 
     /**
+     * Refreshes workspace context and MCP tool list in the system prompt (call before each send).
+     */
+    public void refreshSystemPromptForSend( AgentSession session )
+    {
+        if ( session == null )
+        {
+            return;
+        }
+        session.updateSystemPrompt( promptBuilder.buildSystemPrompt() );
+    }
+
+    /**
      * Rebinds MCP tool callbacks on every open agent tab (e.g. after MCP preference changes).
      */
     public void refreshMcpToolsOnAllSessions()

@@ -51,8 +51,6 @@ public class AgentChatSession
         this.conversationHistory = new ArrayList<>();
         this.displayHistory = new ArrayList<>();
         this.systemPrompt = systemPrompt;
-
-        this.conversationHistory.add( new org.springframework.ai.chat.messages.SystemMessage( systemPrompt ) );
     }
 
     public void initialize( ModelApiDescriptor model )
@@ -158,14 +156,12 @@ public class AgentChatSession
     {
         conversationHistory.clear();
         displayHistory.clear();
-        conversationHistory.add( new org.springframework.ai.chat.messages.SystemMessage( systemPrompt ) );
     }
 
     public void restoreMessages( List<AgentMessageSnapshot> messages )
     {
         conversationHistory.clear();
         displayHistory.clear();
-        conversationHistory.add( new org.springframework.ai.chat.messages.SystemMessage( systemPrompt ) );
         if ( messages == null )
         {
             return;
@@ -255,7 +251,7 @@ public class AgentChatSession
     private void rebuildConversationHistory()
     {
         conversationHistory.clear();
-        conversationHistory.add( new org.springframework.ai.chat.messages.SystemMessage( systemPrompt ) );
+        // System prompt is applied via ChatClient.defaultSystem — do not duplicate as a message.
         for ( ChatMessage message : displayHistory )
         {
             if ( "tool".equals( message.getRole() ) )

@@ -42,9 +42,24 @@ public class MessageAdapter
         }
         if ( "tool".equalsIgnoreCase( role ) )
         {
-            return toToolResponseMessage( chatMessage, content );
+            return toAgentToolHistoryUserMessage( chatMessage, content );
         }
         return new UserMessage( content );
+    }
+
+    /**
+     * Tool UI bubbles are sent to the model as user messages so providers (OpenAI) are not given
+     * orphan {@link ToolResponseMessage}s without a preceding assistant {@code tool_calls} block.
+     */
+    public static UserMessage toAgentToolHistoryUserMessage( ChatMessage chatMessage, String content )
+    {
+        String toolName = chatMessage.getName();
+        if ( toolName == null || toolName.isBlank() )
+        {
+            toolName = "tool";
+        }
+        String body = content != null ? content : "";
+        return new UserMessage( "[Tool result: " + toolName + "]\n" + body );
     }
 
     /**
@@ -61,11 +76,6 @@ public class MessageAdapter
         String data = responseText != null ? responseText : "";
         ToolResponseMessage.ToolResponse response = new ToolResponseMessage.ToolResponse( id, name, data );
         return ToolResponseMessage.builder().responses( List.of( response ) ).build();
-    }
-
-    private static Message toToolResponseMessage( ChatMessage chatMessage, String content )
-    {
-        return toToolResponseMessage( chatMessage, chatMessage.getId(), chatMessage.getName(), content );
     }
 
     private static String appendAttachmentContent( ChatMessage chatMessage, String content )

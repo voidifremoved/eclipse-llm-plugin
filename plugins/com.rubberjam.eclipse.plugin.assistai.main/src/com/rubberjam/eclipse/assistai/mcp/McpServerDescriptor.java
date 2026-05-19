@@ -31,7 +31,7 @@ public record McpServerDescriptor( String uid,
         return url != null && !url.isBlank();
     }
     
-    public enum Status {NOT_CONNECTED, RUNNING, FAILED};
+    public enum Status { DISABLED, NOT_CONNECTED, RUNNING, FAILED }
     public record EnvironmentVariable( String name, String value ) {};
     
     public record McpServerDescriptorWithStatus ( McpServerDescriptor descriptor, Status status ) {}; 

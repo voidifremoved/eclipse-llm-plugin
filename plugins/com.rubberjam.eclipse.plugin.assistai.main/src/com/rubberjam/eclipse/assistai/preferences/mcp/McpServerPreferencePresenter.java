@@ -109,29 +109,49 @@ public class McpServerPreferencePresenter
      * 
      * @return list of MCP server descriptors
      */
-    public List<McpServerDescriptorWithStatus> getServersWithStatus() {
+    public List<McpServerDescriptorWithStatus> getServersWithStatus()
+    {
         var servers = mcpServerRepository.listStoredServers();
-        var list = servers.stream().map(server -> {
-            try 
+        var clients = clientRetistry.listClients();
+        var list = new ArrayList<McpServerDescriptorWithStatus>();
+        for ( McpServerDescriptor server : servers )
+        {
+            if ( !server.enabled() )
             {
-                var client = clientRetistry.listClients().get(server.name());
-                Objects.requireNonNull(server.name(), "Failed to ping MCP server: " + server.name());
-                var result = CompletableFuture.supplyAsync(client::ping)
-                                              .get(MCP_SERVER_PING_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-                Objects.requireNonNull(result, "Failed to ping MCP server: " + server.name());
-                return new McpServerDescriptorWithStatus(server, Status.RUNNING);
+                list.add( new McpServerDescriptorWithStatus( server, Status.DISABLED ) );
+                continue;
             }
-            catch (TimeoutException e) 
+            try
             {
-                logger.error("Ping to MCP server timed out: " + server.name());
-                return new McpServerDescriptorWithStatus(server, Status.FAILED);
+                var client = clients.get( server.name() );
+                if ( client == null )
+                {
+                    logger.error( "No MCP client for enabled server: " + server.name() );
+                    list.add( new McpServerDescriptorWithStatus( server, Status.FAILED ) );
+                    continue;
+                }
+                var result = CompletableFuture.supplyAsync( client::ping )
+                        .get( MCP_SERVER_PING_TIMEOUT_SECONDS, TimeUnit.SECONDS );
+                if ( result == null )
+                {
+                    list.add( new McpServerDescriptorWithStatus( server, Status.FAILED ) );
+                }
+                else
+                {
+                    list.add( new McpServerDescriptorWithStatus( server, Status.RUNNING ) );
+                }
             }
-            catch (Exception e) 
+            catch ( TimeoutException e )
             {
-                logger.error("Failed to connect to MCP server: " + e.getMessage());
-                return new McpServerDescriptorWithStatus(server, Status.FAILED);
+                logger.error( "Ping to MCP server timed out: " + server.name() );
+                list.add( new McpServerDescriptorWithStatus( server, Status.FAILED ) );
             }
-        }).collect(Collectors.toList());
+            catch ( Exception e )
+            {
+                logger.error( "Failed to connect to MCP server: " + server.name() + ": " + e.getMessage() );
+                list.add( new McpServerDescriptorWithStatus( server, Status.FAILED ) );
+            }
+        }
         return list;
     }
 

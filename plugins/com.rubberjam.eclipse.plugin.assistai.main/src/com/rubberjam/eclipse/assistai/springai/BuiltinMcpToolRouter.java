@@ -54,6 +54,16 @@ public final class BuiltinMcpToolRouter
     /**
      * @return tool result text when this is a registered built-in tool, otherwise empty
      */
+    public boolean isRegistered( String toolName )
+    {
+        if ( toolName == null || toolName.isBlank() )
+        {
+            return false;
+        }
+        ensureLoaded();
+        return toolsByName.containsKey( toolName );
+    }
+
     public Optional<String> tryInvoke( String toolName, String toolInputJson )
     {
         Objects.requireNonNull( toolName, "toolName" );
@@ -64,7 +74,8 @@ public final class BuiltinMcpToolRouter
             return Optional.empty();
         }
         Map<String, Object> args = parseToolInput( toolInputJson );
-        Object result = executor.call( toolName, args ).join();
+        String bareToolName = AssistAiMcpToolNames.bareToolName( toolName );
+        Object result = executor.call( bareToolName, args ).join();
         if ( result == null )
         {
             return Optional.of( "" );

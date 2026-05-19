@@ -2,6 +2,10 @@
 === Workspace tool cookbook ===
 Use these MCP tools (names are prefixed with server__, e.g. eclipse-ide__getClassOutline) instead of guessing from chat.
 
+**Active editor**
+- The system prompt lists the current project and open editor file. When the user says "this file", "the current file", or "fix errors here", use that path and project — do not ask them to specify a file unless the context shows Open editor file: (none).
+- Start with eclipse-ide__getCompilationErrors for the active project, then eclipse-coder__applyPatch or eclipse-ide__executeQuickFix as needed.
+
 **Orient**
 - eclipse-ide__listProjects — workspace projects
 - eclipse-ide__getProjectLayout — tree under a path (use scopePath + maxDepth on large projects)
