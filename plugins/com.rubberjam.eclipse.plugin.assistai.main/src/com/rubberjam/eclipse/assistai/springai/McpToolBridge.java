@@ -11,6 +11,7 @@ import java.util.concurrent.TimeoutException;
 
 import org.eclipse.e4.core.di.annotations.Creatable;
 
+import com.rubberjam.eclipse.assistai.agent.AgentPostEditVerifier;
 import com.rubberjam.eclipse.assistai.agent.ToolCallEvent;
 import com.rubberjam.eclipse.assistai.agent.ToolCallEventListener;
 import com.rubberjam.eclipse.assistai.agent.ToolCallStatus;
@@ -45,6 +46,9 @@ public class McpToolBridge
 
     @Inject
     private BuiltinMcpToolRouter builtinToolRouter;
+
+    @Inject
+    private AgentPostEditVerifier postEditVerifier;
 
     public ToolCallback[] getToolCallbacks()
     {
@@ -93,7 +97,12 @@ public class McpToolBridge
             {
                 continue;
             }
-            wrapped.add( new ObservableToolCallback( callback, listener, toolInvocationExecutor, builtinToolRouter ) );
+            wrapped.add( new ObservableToolCallback(
+                    callback,
+                    listener,
+                    toolInvocationExecutor,
+                    builtinToolRouter,
+                    postEditVerifier ) );
         }
         addBuiltinFallbackCallbacks( context, listener, wrapped );
         return wrapped.toArray( new ToolCallback[0] );
@@ -132,7 +141,8 @@ public class McpToolBridge
                     fallback,
                     listener,
                     toolInvocationExecutor,
-                    builtinToolRouter ) );
+                    builtinToolRouter,
+                    postEditVerifier ) );
             registered.add( allowedName );
         }
     }
@@ -185,16 +195,20 @@ public class McpToolBridge
 
         private final BuiltinMcpToolRouter builtinToolRouter;
 
+        private final AgentPostEditVerifier postEditVerifier;
+
         private ObservableToolCallback(
                 ToolCallback delegate,
                 ToolCallEventListener listener,
                 McpToolInvocationExecutor invocationExecutor,
-                BuiltinMcpToolRouter builtinToolRouter )
+                BuiltinMcpToolRouter builtinToolRouter,
+                AgentPostEditVerifier postEditVerifier )
         {
             this.delegate = Objects.requireNonNull( delegate, "delegate" );
             this.listener = listener != null ? listener : ToolCallEventListener.noop();
             this.invocationExecutor = Objects.requireNonNull( invocationExecutor, "invocationExecutor" );
             this.builtinToolRouter = Objects.requireNonNull( builtinToolRouter, "builtinToolRouter" );
+            this.postEditVerifier = postEditVerifier;
         }
 
         @Override
@@ -236,6 +250,10 @@ public class McpToolBridge
                     }
                     return delegate.call( toolInput, toolContext );
                 } );
+                if ( postEditVerifier != null && postEditVerifier.isCoderTool( toolName ) )
+                {
+                    result = result + postEditVerifier.verifyAfterEditFooter();
+                }
                 listener.onToolCallEvent( new ToolCallEvent(
                         id,
                         toolName,

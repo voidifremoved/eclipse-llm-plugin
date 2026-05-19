@@ -1,3 +1,21 @@
+/**
+ * Decode Base64 UTF-8 HTML from Java (atob alone breaks non-ASCII e.g. ellipsis).
+ */
+function decodeUtf8Base64( base64 )
+{
+    var binary = atob( base64 );
+    var bytes = new Uint8Array( binary.length );
+    for ( var i = 0; i < binary.length; i++ )
+    {
+        bytes[i] = binary.charCodeAt( i );
+    }
+    if ( typeof TextDecoder !== 'undefined' )
+    {
+        return new TextDecoder( 'utf-8' ).decode( bytes );
+    }
+    return decodeURIComponent( escape( binary ) );
+}
+
 // Function to update summary with function name
 function updateFunctionCallSummaries() {
   // Find all function call detail elements

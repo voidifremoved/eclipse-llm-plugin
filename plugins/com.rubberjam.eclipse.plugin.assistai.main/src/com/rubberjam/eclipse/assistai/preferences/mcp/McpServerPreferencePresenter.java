@@ -86,10 +86,26 @@ public class McpServerPreferencePresenter
         return agentToolPolicy.isUseEclipseSkillsInPrompt();
     }
 
-    public void saveAgentToolPreferences( boolean allowWebTools, boolean useEclipseSkills )
+    public boolean isVerifyAfterEdit()
+    {
+        return agentToolPolicy.isVerifyAfterEdit();
+    }
+
+    public int getMaxToolRounds()
+    {
+        return agentToolPolicy.getMaxToolRounds();
+    }
+
+    public void saveAgentToolPreferences(
+            boolean allowWebTools,
+            boolean useEclipseSkills,
+            boolean verifyAfterEdit,
+            int maxToolRounds )
     {
         agentToolPolicy.setAllowWebTools( allowWebTools );
         agentToolPolicy.setUseEclipseSkillsInPrompt( useEclipseSkills );
+        agentToolPolicy.setVerifyAfterEdit( verifyAfterEdit );
+        agentToolPolicy.setMaxToolRounds( maxToolRounds );
         Activator.getDefault().make( AgentSessionManager.class ).refreshMcpToolsOnAllSessions();
     }
 

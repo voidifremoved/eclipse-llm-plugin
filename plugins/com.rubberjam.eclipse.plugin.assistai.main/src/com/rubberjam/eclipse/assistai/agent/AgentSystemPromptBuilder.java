@@ -38,9 +38,25 @@ public class AgentSystemPromptBuilder
 
     public String buildSystemPrompt()
     {
+        return buildSystemPrompt( null, null );
+    }
+
+    public String buildSystemPrompt( String extraFragmentFile, String additionalSystemText )
+    {
         StringBuilder prompt = new StringBuilder();
-        prompt.append( promptRepository.getPrompt( Prompts.SYSTEM.name() ) );
+        prompt.append( loadBundledFragment( "agent-system-prompt.md" ) );
         prompt.append( "\n" );
+        if ( extraFragmentFile != null && !extraFragmentFile.isBlank() )
+        {
+            prompt.append( loadBundledFragment( extraFragmentFile ) );
+        }
+        if ( additionalSystemText != null && !additionalSystemText.isBlank() )
+        {
+            prompt.append( "\n=== Approved plan ===\n" );
+            prompt.append( additionalSystemText );
+            prompt.append( "\nExecute this plan with workspace tools. Mark steps done as you go.\n" );
+            prompt.append( "===========================\n" );
+        }
         prompt.append( buildWorkspaceContext() );
         prompt.append( buildMcpToolsContext() );
         prompt.append( loadBundledFragment( "agent-workspace.md" ) );

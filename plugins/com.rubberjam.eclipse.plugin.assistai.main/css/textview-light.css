@@ -75,6 +75,52 @@ li {
   white-space: pre-wrap;
 }
 
+.chat-bubble.thinking-bubble {
+  background-color: #f3f0ff;
+  border-left: 3px solid #6b5ce7;
+  color: #3d3566;
+  font-size: 13px;
+}
+
+.thinking-title {
+  font-weight: 600;
+  color: #5a4fcf;
+  margin-bottom: 4px;
+}
+
+.thinking-details {
+  margin-top: 4px;
+}
+
+.thinking-details pre {
+  margin-top: 6px;
+  max-height: 280px;
+  white-space: pre-wrap;
+  color: #4a4268;
+}
+
+.thinking-placeholder {
+  color: #6b5ce7;
+  font-style: italic;
+  margin: 0;
+}
+
+.thinking-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border: 2px solid #6b5ce7;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: thinking-spin 0.8s linear infinite;
+  vertical-align: middle;
+}
+
+@keyframes thinking-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Ensure inline elements stay inline */
 .chat-bubble i, .chat-bubble em, .chat-bubble b, .chat-bubble strong, .chat-bubble span, .chat-bubble a {
   display: inline;

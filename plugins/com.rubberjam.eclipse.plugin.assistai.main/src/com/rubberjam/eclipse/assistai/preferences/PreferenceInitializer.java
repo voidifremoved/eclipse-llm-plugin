@@ -97,6 +97,8 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer
 
         store.setDefault( PreferenceConstants.ASSISTAI_AGENT_ALLOW_WEB_TOOLS, false );
         store.setDefault( PreferenceConstants.ASSISTAI_AGENT_USE_ECLIPSE_SKILLS, true );
+        store.setDefault( PreferenceConstants.ASSISTAI_AGENT_VERIFY_AFTER_EDIT, true );
+        store.setDefault( PreferenceConstants.ASSISTAI_AGENT_MAX_TOOL_ROUNDS, 25 );
 
         PromptLoader promptLoader = new PromptLoader();
         for ( Prompts prompt : Prompts.values() )

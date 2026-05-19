@@ -32,7 +32,21 @@ public class AgentTabState
 
     final StringBuilder pendingAssistantHtml = new StringBuilder();
 
+    String pendingThinkingMessageId;
+
+    final StringBuilder pendingThinkingHtml = new StringBuilder();
+
     final Map<String, String> toolMessageIds = new HashMap<>();
 
     final Map<String, String> toolNames = new HashMap<>();
+
+    boolean planModeEnabled;
+
+    boolean awaitingPlanExecution;
+
+    String pendingPlanText;
+
+    int toolRoundCount;
+
+    final List<AgentTaskItem> taskItems = new ArrayList<>();
 }

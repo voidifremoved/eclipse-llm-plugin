@@ -2,12 +2,15 @@ package com.rubberjam.eclipse.assistai.springai;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 
 import com.rubberjam.eclipse.assistai.agent.AgentMessageSnapshot;
 import com.rubberjam.eclipse.assistai.agent.AgentToolPolicy;
@@ -37,6 +40,8 @@ public class AgentChatSession
     private final List<ChatMessage> displayHistory;
     private String systemPrompt;
     private ToolCallEventListener toolCallEventListener = ToolCallEventListener.noop();
+
+    private AgentSendOptions currentSendOptions = AgentSendOptions.DEFAULT;
 
     public AgentChatSession(
             ChatModelRegistry modelRegistry,
@@ -80,10 +85,20 @@ public class AgentChatSession
 
     public Flux<AgentStreamChunk> sendMessage( String text, List<Attachment> attachments, String messageId )
     {
+        return sendMessage( text, attachments, messageId, AgentSendOptions.DEFAULT );
+    }
+
+    public Flux<AgentStreamChunk> sendMessage(
+            String text,
+            List<Attachment> attachments,
+            String messageId,
+            AgentSendOptions sendOptions )
+    {
         if ( currentModel == null )
         {
             throw new IllegalStateException( "Agent chat session not initialized with a model." );
         }
+        currentSendOptions = sendOptions != null ? sendOptions : AgentSendOptions.DEFAULT;
         rebuildConversationHistory();
         rebuildChatClient();
 
@@ -230,7 +245,7 @@ public class AgentChatSession
         ChatModel chatModel = modelRegistry.getModel( currentModel.uid() );
         ChatClient.Builder builder = ChatClient.builder( chatModel )
                 .defaultSystem( systemPrompt );
-        if ( currentModel.functionCalling() )
+        if ( currentModel.functionCalling() && currentSendOptions.isToolsEnabled() )
         {
             ConversationContext toolContext = ConversationContext.builder()
                     .contextId( "agent-" + sessionId )
@@ -244,8 +259,39 @@ public class AgentChatSession
 
     private AgentStreamChunk toStreamChunk( ChatResponse chatResponse )
     {
-        String content = chatResponse.getResult().getOutput().getText();
+        Generation generation = chatResponse.getResult();
+        AssistantMessage output = generation.getOutput();
+        String content = output.getText();
+        String thinking = extractReasoningText( output );
+        if ( thinking != null && !thinking.isEmpty() )
+        {
+            return new AgentStreamChunk(
+                    content != null ? content : "",
+                    thinking );
+        }
         return new AgentStreamChunk( content != null ? content : "" );
+    }
+
+    private static String extractReasoningText( AssistantMessage output )
+    {
+        return metadataString( output.getMetadata(), "reasoningContent", "reasoning_content", "thinking" );
+    }
+
+    private static String metadataString( Map<String, Object> metadata, String... keys )
+    {
+        if ( metadata == null )
+        {
+            return null;
+        }
+        for ( String key : keys )
+        {
+            Object value = metadata.get( key );
+            if ( value instanceof String text && !text.isEmpty() )
+            {
+                return text;
+            }
+        }
+        return null;
     }
 
     private void rebuildConversationHistory()

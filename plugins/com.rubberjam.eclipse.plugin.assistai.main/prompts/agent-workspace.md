@@ -4,7 +4,10 @@ Use these MCP tools (names are prefixed with server__, e.g. eclipse-ide__getClas
 
 **Active editor**
 - The system prompt lists the current project and open editor file. When the user says "this file", "the current file", or "fix errors here", use that path and project — do not ask them to specify a file unless the context shows Open editor file: (none).
-- Start with eclipse-ide__getCompilationErrors for the active project, then eclipse-coder__applyPatch or eclipse-ide__executeQuickFix as needed.
+- For "this file" / "current file" / Fix Errors: call getCompilationErrors with **filePath** (project-relative path from the system prompt), not the whole project. Fix only markers in that file.
+- For project-wide requests: omit filePath and use projectName only.
+- Then use applyPatch or executeQuickFix as needed. Always apply fixes when the user asked to fix — do not only report the error list.
+- memory__think — record reasoning/plan (shown in the UI as Thinking); then run edit tools.
 
 **Orient**
 - eclipse-ide__listProjects — workspace projects

@@ -40,6 +40,7 @@ import com.rubberjam.eclipse.assistai.view.ChatView;
 import com.rubberjam.eclipse.assistai.view.PartAccessor;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptorRepository;
+import com.rubberjam.eclipse.assistai.springai.AgentSendOptions;
 import com.rubberjam.eclipse.assistai.prompt.Prompts;
 import com.rubberjam.eclipse.assistai.view.ApplyPatchWizardHelper;
 import com.rubberjam.eclipse.assistai.view.ChatView.NotificationType;
@@ -69,6 +70,10 @@ public class AgentViewPresenter implements IResourceCacheListener
     @Inject private ApplyPatchWizardHelper applyPatchWizardHelper;
     @Inject private UISynchronize uiSync;
 
+    @Inject private AgentToolPolicy agentToolPolicy;
+
+    @Inject private AgentCompilationErrorScope compilationErrorScope;
+
     private final Map<String, AgentTabState> tabStates = new HashMap<>();
 
     private ChatView registeredView;
@@ -83,7 +88,58 @@ public class AgentViewPresenter implements IResourceCacheListener
         onSendUserMessage(text, null);
     }
 
-    public void onSendUserMessage(String text, List<Attachment> attachments)
+    public void onSendUserMessage( String text, List<Attachment> attachments )
+    {
+        onSendUserMessage( text, attachments, null );
+    }
+
+    public void onPlanModeToggled( boolean enabled )
+    {
+        AgentSessionManager sessionManager = sessionManagerProvider.get();
+        String tabId = sessionManager.getActiveTabId();
+        if ( tabId == null )
+        {
+            return;
+        }
+        AgentTabState tabState = getTabState( tabId );
+        tabState.planModeEnabled = enabled;
+        if ( !enabled )
+        {
+            tabState.awaitingPlanExecution = false;
+        }
+        applyToView( view -> {
+            view.setPlanModeSelected( enabled );
+            view.setExecutePlanEnabled( tabState.awaitingPlanExecution );
+        } );
+    }
+
+    public void onExecutePlan()
+    {
+        AgentSessionManager sessionManager = sessionManagerProvider.get();
+        String tabId = sessionManager.getActiveTabId();
+        if ( tabId == null )
+        {
+            return;
+        }
+        AgentTabState tabState = getTabState( tabId );
+        if ( !tabState.awaitingPlanExecution || tabState.pendingPlanText == null
+                || tabState.pendingPlanText.isBlank() )
+        {
+            return;
+        }
+        tabState.awaitingPlanExecution = false;
+        tabState.planModeEnabled = false;
+        applyToView( view -> {
+            view.setPlanModeSelected( false );
+            view.setExecutePlanEnabled( false );
+        } );
+        onSendUserMessage(
+                "Execute the approved plan below using workspace MCP tools. Work through each checklist item.",
+                null,
+                AgentSendOptions.executePlan( tabState.pendingPlanText ) );
+    }
+
+    private void onSendUserMessage( String text, List<Attachment> attachments, AgentSendOptions sendOptions )
     {
         try
         {
@@ -127,8 +183,11 @@ public class AgentViewPresenter implements IResourceCacheListener
                 }
             }
 
-            sessionManager.refreshSystemPromptForSend( session );
+            AgentSendOptions options = resolveSendOptions( tabState, sendOptions );
+            sessionManager.refreshSystemPromptForSend( session, options );
+            applyCompilationErrorScope( text );
             String userText = enrichWithActiveEditorContext( text );
+            tabState.toolRoundCount = 0;
             String userMessageId = UUID.randomUUID().toString();
             updateTabTitle( tabId, userText );
 
@@ -152,11 +211,17 @@ public class AgentViewPresenter implements IResourceCacheListener
             tabState.generationId++;
             tabState.toolMessageIds.clear();
             tabState.toolNames.clear();
+            tabState.pendingThinkingMessageId = null;
+            tabState.pendingThinkingHtml.setLength( 0 );
             final int generationId = tabState.generationId;
 
-            applyToView( view -> view.appendMessage( assistantMessageId, "assistant" ) );
+            applyToView( view -> {
+                view.appendMessage( assistantMessageId, "assistant" );
+                view.setThinkingPlaceholder( assistantMessageId );
+            } );
 
-            tabState.currentStream = session.sendMessage( userText, tabAttachments, userMessageId )
+            final AgentSendOptions sendOptionsFinal = options;
+            tabState.currentStream = session.sendMessage( userText, tabAttachments, userMessageId, options )
                 .subscribeOn( Schedulers.boundedElastic() )
                 .subscribe(
                     chunk -> {
@@ -164,10 +229,13 @@ public class AgentViewPresenter implements IResourceCacheListener
                         {
                             return;
                         }
-                        String content = chunk.text();
-                        if ( content != null )
+                        if ( chunk.hasThinking() )
                         {
-                            tabState.pendingAssistantHtml.append( content );
+                            appendThinkingChunk( tabState, activeTabId, chunk.thinking() );
+                        }
+                        if ( chunk.hasText() )
+                        {
+                            tabState.pendingAssistantHtml.append( chunk.text() );
                             updateCachedMessageContent( tabState, assistantMessageId, tabState.pendingAssistantHtml.toString() );
                             if ( activeTabId.equals( sessionManager.getActiveTabId() ) )
                             {
@@ -191,6 +259,7 @@ public class AgentViewPresenter implements IResourceCacheListener
                         updateCachedMessageContent( tabState, assistantMessageId, finalMessage );
                         session.appendAssistantResponse( assistantMessageId, finalMessage );
                         sessionManager.persistTabs();
+                        compilationErrorScope.clear();
                         if ( activeTabId.equals( sessionManager.getActiveTabId() ) )
                         {
                             applyToView( view -> {
@@ -204,20 +273,41 @@ public class AgentViewPresenter implements IResourceCacheListener
                         {
                             return;
                         }
-                        session.appendAssistantResponse( assistantMessageId, tabState.pendingAssistantHtml.toString() );
-                        updateCachedMessageContent( tabState, assistantMessageId, tabState.pendingAssistantHtml.toString() );
+                        String responseText = tabState.pendingAssistantHtml.toString();
+                        session.appendAssistantResponse( assistantMessageId, responseText );
+                        updateCachedMessageContent( tabState, assistantMessageId, responseText );
+                        if ( sendOptionsFinal == AgentSendOptions.PLAN_ONLY )
+                        {
+                            tabState.awaitingPlanExecution = true;
+                            tabState.pendingPlanText = responseText;
+                            tabState.taskItems.clear();
+                            tabState.taskItems.addAll( AgentTaskChecklistParser.parse( responseText ) );
+                        }
+                        else
+                        {
+                            tabState.taskItems.clear();
+                            tabState.taskItems.addAll( AgentTaskChecklistParser.parse( responseText ) );
+                        }
                         tabState.generating = false;
                         tabState.pendingAssistantMessageId = null;
+                        tabState.pendingThinkingMessageId = null;
+                        tabState.pendingThinkingHtml.setLength( 0 );
                         sessionManager.persistTabs();
+                        compilationErrorScope.clear();
                         if ( activeTabId.equals( sessionManager.getActiveTabId() ) )
                         {
-                            applyToView( view -> view.setInputEnabled( true ) );
+                            applyToView( view -> {
+                                view.setInputEnabled( true );
+                                view.setExecutePlanEnabled( tabState.awaitingPlanExecution );
+                                refreshTaskPanel( tabState );
+                            } );
                         }
                     } );
             tabState.attachments.clear();
         }
         catch ( Exception e )
         {
+            compilationErrorScope.clear();
             logger.error( "Failed to send message to AI model", e );
             applyToView( view -> {
                 view.showNotification(
@@ -293,6 +383,7 @@ public class AgentViewPresenter implements IResourceCacheListener
                 sessionManagerProvider.get().persistTabs();
             }
         }
+        compilationErrorScope.clear();
         applyToView( view -> view.setInputEnabled( true ) );
     }
 
@@ -457,6 +548,9 @@ public class AgentViewPresenter implements IResourceCacheListener
             v.setUserInputText( tabState.draftText );
             v.setAttachments( new ArrayList<>( tabState.attachments ) );
             v.setInputEnabled( !tabState.generating );
+            v.setPlanModeSelected( tabState.planModeEnabled );
+            v.setExecutePlanEnabled( tabState.awaitingPlanExecution );
+            refreshTaskPanel( tabState );
         } );
         initializeAvailableModels();
     }
@@ -684,6 +778,33 @@ public class AgentViewPresenter implements IResourceCacheListener
         }
         if ( event.status() == ToolCallStatus.STARTED )
         {
+            if ( isThinkingTool( event.toolName() ) )
+            {
+                String thought = extractThoughtFromToolInput( event.input() );
+                if ( thought != null && !thought.isBlank() )
+                {
+                    appendThinkingChunk( tabState, tabId, thought );
+                }
+                updateAgentActivity( tabState, tabId, "Thinking..." );
+                return;
+            }
+            tabState.toolRoundCount++;
+            int maxRounds = agentToolPolicy.getMaxToolRounds();
+            if ( tabState.toolRoundCount > maxRounds )
+            {
+                applyToView( view -> view.showNotification(
+                        "Tool round limit reached (" + maxRounds + "). Stop and send a new message to continue.",
+                        Duration.ofSeconds( 12 ),
+                        NotificationType.WARNING ) );
+                onStop();
+                return;
+            }
+            updateAgentActivity(
+                    tabState,
+                    tabId,
+                    "Round " + tabState.toolRoundCount + "/" + maxRounds + ": " + event.toolName() + "..." );
+            AgentTaskChecklistParser.markCompletedByTool( tabState.taskItems, event.toolName() );
+            refreshTaskPanel( tabState );
             String messageId = UUID.randomUUID().toString();
             tabState.toolMessageIds.put( event.id(), messageId );
             tabState.toolNames.put( event.id(), event.toolName() );
@@ -718,6 +839,18 @@ public class AgentViewPresenter implements IResourceCacheListener
             return;
         }
 
+        if ( isThinkingTool( event.toolName() ) )
+        {
+            if ( event.status() == ToolCallStatus.FINISHED || event.status() == ToolCallStatus.FAILED )
+            {
+                String thought = resolveThoughtText( event.input(), event.output() );
+                if ( thought != null && !thought.isBlank() )
+                {
+                    setThinkingContent( tabState, tabId, thought );
+                }
+            }
+            return;
+        }
         String messageId = tabState.toolMessageIds.get( event.id() );
         if ( messageId == null )
         {
@@ -773,7 +906,241 @@ public class AgentViewPresenter implements IResourceCacheListener
             note.append( "project=" ).append( project ).append( ", " );
         }
         note.append( "file=" ).append( path ).append( ']' );
+        if ( refersToFixRequest( userText ) || refersToCurrentEditor( userText ) )
+        {
+            note.append( "\n[Task: Fix ONLY this file. Call eclipse-ide__getCompilationErrors with projectName and "
+                    + "filePath set to the path above. Do not fix errors in other files or run Maven/build unless "
+                    + "the user explicitly asked. Apply executeQuickFix and/or applyPatch, then re-check with the "
+                    + "same filePath. Do not only list errors.]" );
+        }
         return userText + note.toString();
+    }
+
+    private void applyCompilationErrorScope( String userText )
+    {
+        if ( refersToProjectWideFix( userText ) )
+        {
+            compilationErrorScope.clear();
+            return;
+        }
+        if ( !refersToCurrentEditor( userText ) && !refersToFixRequest( userText ) )
+        {
+            compilationErrorScope.clear();
+            return;
+        }
+        String project = promptContext.getContextValue( "currentProjectName" );
+        String path = promptContext.getContextValue( "currentFilePath" );
+        if ( path == null || path.isBlank() )
+        {
+            compilationErrorScope.clear();
+            return;
+        }
+        compilationErrorScope.set( new AgentCompilationErrorScope.Scope( project, path ) );
+    }
+
+    private void applyCompilationErrorScopeForCurrentEditor()
+    {
+        String project = promptContext.getContextValue( "currentProjectName" );
+        String path = promptContext.getContextValue( "currentFilePath" );
+        if ( path == null || path.isBlank() )
+        {
+            compilationErrorScope.clear();
+            return;
+        }
+        compilationErrorScope.set( new AgentCompilationErrorScope.Scope( project, path ) );
+    }
+
+    private static AgentSendOptions resolveSendOptions( AgentTabState tabState, AgentSendOptions explicit )
+    {
+        if ( explicit != null )
+        {
+            return explicit;
+        }
+        if ( tabState.planModeEnabled && !tabState.awaitingPlanExecution )
+        {
+            return AgentSendOptions.PLAN_ONLY;
+        }
+        return AgentSendOptions.DEFAULT;
+    }
+
+    private void refreshTaskPanel( AgentTabState tabState )
+    {
+        if ( registeredView == null )
+        {
+            return;
+        }
+        applyToView( view -> view.setTaskChecklist( tabState.taskItems ) );
+    }
+
+    private void updateAgentActivity( AgentTabState tabState, String tabId, String status )
+    {
+        if ( tabState.pendingAssistantMessageId == null || status == null || status.isBlank() )
+        {
+            return;
+        }
+        if ( tabId.equals( sessionManagerProvider.get().getActiveTabId() ) )
+        {
+            String assistantId = tabState.pendingAssistantMessageId;
+            applyToView( view -> view.setAgentActivityStatus( assistantId, status ) );
+        }
+    }
+
+    private void setThinkingContent( AgentTabState tabState, String tabId, String thought )
+    {
+        if ( thought == null || thought.isBlank() )
+        {
+            return;
+        }
+        boolean isNew = tabState.pendingThinkingMessageId == null;
+        if ( isNew )
+        {
+            tabState.pendingThinkingMessageId = UUID.randomUUID().toString();
+        }
+        tabState.pendingThinkingHtml.setLength( 0 );
+        tabState.pendingThinkingHtml.append( thought );
+        String thinkingId = tabState.pendingThinkingMessageId;
+        String combined = tabState.pendingThinkingHtml.toString();
+        if ( isNew )
+        {
+            cacheMessage( tabState, thinkingId, "thinking", combined );
+        }
+        else
+        {
+            updateCachedMessageContent( tabState, thinkingId, combined );
+        }
+        if ( tabId.equals( sessionManagerProvider.get().getActiveTabId() ) )
+        {
+            if ( isNew )
+            {
+                applyToView( view -> {
+                    view.appendThinkingMessage( thinkingId, combined );
+                    if ( tabState.pendingAssistantMessageId != null )
+                    {
+                        view.moveMessageToEnd( tabState.pendingAssistantMessageId );
+                    }
+                } );
+            }
+            else
+            {
+                applyToView( view -> view.updateThinkingMessage( thinkingId, combined ) );
+            }
+        }
+    }
+
+    private void appendThinkingChunk( AgentTabState tabState, String tabId, String thought )
+    {
+        if ( thought == null || thought.isBlank() )
+        {
+            return;
+        }
+        if ( tabState.pendingThinkingMessageId == null )
+        {
+            setThinkingContent( tabState, tabId, thought );
+            return;
+        }
+        if ( tabState.pendingThinkingHtml.length() > 0 )
+        {
+            tabState.pendingThinkingHtml.append( '\n' );
+        }
+        tabState.pendingThinkingHtml.append( thought );
+        String combined = tabState.pendingThinkingHtml.toString();
+        String thinkingId = tabState.pendingThinkingMessageId;
+        updateCachedMessageContent( tabState, thinkingId, combined );
+        if ( tabId.equals( sessionManagerProvider.get().getActiveTabId() ) )
+        {
+            applyToView( view -> view.updateThinkingMessage( thinkingId, combined ) );
+        }
+    }
+
+    private static String resolveThoughtText( String input, String output )
+    {
+        String thought = extractThoughtFromToolInput( input );
+        if ( ( thought == null || thought.isBlank() ) && output != null && !output.isBlank() )
+        {
+            return output;
+        }
+        if ( output != null && !output.isBlank() && thought != null && !thought.isBlank()
+                && !output.equals( thought ) )
+        {
+            return thought + "\n\n" + output;
+        }
+        return thought;
+    }
+
+    private static boolean isThinkingTool( String toolName )
+    {
+        return toolName != null && toolName.endsWith( "__think" );
+    }
+
+    private static String extractThoughtFromToolInput( String input )
+    {
+        if ( input == null || input.isBlank() )
+        {
+            return "";
+        }
+        String trimmed = input.trim();
+        if ( trimmed.startsWith( "{" ) )
+        {
+            int thoughtKey = trimmed.indexOf( "\"thought\"" );
+            if ( thoughtKey < 0 )
+            {
+                thoughtKey = trimmed.indexOf( "'thought'" );
+            }
+            if ( thoughtKey >= 0 )
+            {
+                int colon = trimmed.indexOf( ':', thoughtKey );
+                if ( colon >= 0 )
+                {
+                    int valueStart = colon + 1;
+                    while ( valueStart < trimmed.length()
+                            && Character.isWhitespace( trimmed.charAt( valueStart ) ) )
+                    {
+                        valueStart++;
+                    }
+                    if ( valueStart < trimmed.length() && trimmed.charAt( valueStart ) == '"' )
+                    {
+                        int end = valueStart + 1;
+                        StringBuilder value = new StringBuilder();
+                        while ( end < trimmed.length() )
+                        {
+                            char c = trimmed.charAt( end );
+                            if ( c == '\\' && end + 1 < trimmed.length() )
+                            {
+                                value.append( trimmed.charAt( end + 1 ) );
+                                end += 2;
+                                continue;
+                            }
+                            if ( c == '"' )
+                            {
+                                return value.toString();
+                            }
+                            value.append( c );
+                            end++;
+                        }
+                    }
+                }
+            }
+        }
+        return trimmed;
+    }
+
+    private static boolean refersToFixRequest( String text )
+    {
+        String lower = text.toLowerCase();
+        return lower.contains( "fix error" )
+                || lower.contains( "fix compilation" )
+                || lower.contains( "resolve error" )
+                || lower.contains( "correct error" );
+    }
+
+    private static boolean refersToProjectWideFix( String text )
+    {
+        String lower = text.toLowerCase();
+        return lower.contains( "whole project" )
+                || lower.contains( "entire project" )
+                || lower.contains( "all files" )
+                || lower.contains( "across the project" )
+                || lower.contains( "workspace-wide" );
     }
 
     private static boolean refersToCurrentEditor( String text )
@@ -821,8 +1188,13 @@ public class AgentViewPresenter implements IResourceCacheListener
         return false;
     }
 
-    public void onSendPredefinedPrompt(com.rubberjam.eclipse.assistai.prompt.Prompts type, ChatMessage message) {
-        onSendUserMessage(message.getContent(), message.getAttachments());
+    public void onSendPredefinedPrompt( com.rubberjam.eclipse.assistai.prompt.Prompts type, ChatMessage message )
+    {
+        if ( type == com.rubberjam.eclipse.assistai.prompt.Prompts.FIX_ERRORS )
+        {
+            applyCompilationErrorScopeForCurrentEditor();
+        }
+        onSendUserMessage( message.getContent(), message.getAttachments() );
     }
 
     @PostConstruct

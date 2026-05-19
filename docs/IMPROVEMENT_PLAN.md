@@ -86,7 +86,7 @@ Step-by-step roadmap based on the current plugin codebase (May 2026). Use this a
 
 ---
 
-### Phase 2 — Agentic workflow (plan → execute → verify) (3–4 weeks)
+### Phase 2 — Agentic workflow (plan → execute → verify) (3–4 weeks) ✅ Completed
 
 **Goal:** Break work into visible subtasks and enforce verify-after-edit.
 
@@ -194,4 +194,4 @@ If time is limited, implement in this order:
 
 ---
 
-*Last updated: 2026-05-19 — reflects codebase including Spring AI agent path, `McpToolBridge`, `BuiltinMcpToolRouter`, and multi-tab `AgentViewPresenter`.*
+*Last updated: 2026-05-19 — Phases 0–2 complete: workspace-first tools, plan mode + task checklist UI, post-edit compile verification, max tool rounds.*

@@ -88,6 +88,31 @@ public class AgentToolPolicy
         getPreferenceStore().setValue( PreferenceConstants.ASSISTAI_AGENT_USE_ECLIPSE_SKILLS, use );
     }
 
+    public boolean isVerifyAfterEdit()
+    {
+        return getPreferenceStore().getBoolean( PreferenceConstants.ASSISTAI_AGENT_VERIFY_AFTER_EDIT );
+    }
+
+    public void setVerifyAfterEdit( boolean verify )
+    {
+        getPreferenceStore().setValue( PreferenceConstants.ASSISTAI_AGENT_VERIFY_AFTER_EDIT, verify );
+    }
+
+    public int getMaxToolRounds()
+    {
+        int value = getPreferenceStore().getInt( PreferenceConstants.ASSISTAI_AGENT_MAX_TOOL_ROUNDS );
+        if ( value < 1 )
+        {
+            return 25;
+        }
+        return value;
+    }
+
+    public void setMaxToolRounds( int maxRounds )
+    {
+        getPreferenceStore().setValue( PreferenceConstants.ASSISTAI_AGENT_MAX_TOOL_ROUNDS, Math.max( 1, maxRounds ) );
+    }
+
     /**
      * Full Spring AI tool names ({@code server__tool}) allowed for the agent.
      */

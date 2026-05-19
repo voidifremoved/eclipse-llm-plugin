@@ -37,4 +37,10 @@ public class PreferenceConstants
 
     /** Agent: append bundled Eclipse workflow hints to the system prompt */
     public static final String ASSISTAI_AGENT_USE_ECLIPSE_SKILLS = "AssistAIAgentUseEclipseSkills";
+
+    /** Agent: after eclipse-coder tool success, auto-call getCompilationErrors */
+    public static final String ASSISTAI_AGENT_VERIFY_AFTER_EDIT = "AssistAIAgentVerifyAfterEdit";
+
+    /** Agent: max tool-call rounds per user message */
+    public static final String ASSISTAI_AGENT_MAX_TOOL_ROUNDS = "AssistAIAgentMaxToolRounds";
 }

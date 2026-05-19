@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rubberjam.eclipse.assistai.Activator;
 import com.rubberjam.eclipse.assistai.springai.AgentChatEngine;
 import com.rubberjam.eclipse.assistai.springai.AgentChatSession;
+import com.rubberjam.eclipse.assistai.springai.AgentSendOptions;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptorRepository;
 import com.rubberjam.eclipse.assistai.preferences.PreferenceConstants;
@@ -275,11 +276,20 @@ public class AgentSessionManager
      */
     public void refreshSystemPromptForSend( AgentSession session )
     {
+        refreshSystemPromptForSend( session, AgentSendOptions.DEFAULT );
+    }
+
+    public void refreshSystemPromptForSend( AgentSession session, AgentSendOptions sendOptions )
+    {
         if ( session == null )
         {
             return;
         }
-        session.updateSystemPrompt( promptBuilder.buildSystemPrompt() );
+        AgentSendOptions options = sendOptions != null ? sendOptions : AgentSendOptions.DEFAULT;
+        String prompt = promptBuilder.buildSystemPrompt(
+                options.getPromptFragmentFile(),
+                options.getAdditionalSystemText() );
+        session.updateSystemPrompt( prompt );
     }
 
     /**

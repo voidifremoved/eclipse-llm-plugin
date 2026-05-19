@@ -6,6 +6,7 @@ import com.rubberjam.eclipse.assistai.chat.Attachment;
 import com.rubberjam.eclipse.assistai.chat.ChatMessage;
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 import com.rubberjam.eclipse.assistai.springai.AgentChatSession;
+import com.rubberjam.eclipse.assistai.springai.AgentSendOptions;
 import com.rubberjam.eclipse.assistai.springai.AgentStreamChunk;
 
 import reactor.core.publisher.Flux;
@@ -45,6 +46,15 @@ public class AgentSession
     public Flux<AgentStreamChunk> sendMessage( String text, List<Attachment> attachments, String messageId )
     {
         return chatSession.sendMessage( text, attachments, messageId );
+    }
+
+    public Flux<AgentStreamChunk> sendMessage(
+            String text,
+            List<Attachment> attachments,
+            String messageId,
+            AgentSendOptions sendOptions )
+    {
+        return chatSession.sendMessage( text, attachments, messageId, sendOptions );
     }
 
     public void appendAssistantResponse( String messageId, String responseText )

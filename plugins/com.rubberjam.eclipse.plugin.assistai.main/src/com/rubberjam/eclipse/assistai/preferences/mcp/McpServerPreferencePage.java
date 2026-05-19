@@ -106,6 +106,10 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
 
     private Button                       useEclipseSkillsCheckbox;
 
+    private Button                       verifyAfterEditCheckbox;
+
+    private Text                         maxToolRoundsText;
+
     @Override
     public void init( IWorkbench workbench )
     {
@@ -202,6 +206,18 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
         useEclipseSkillsCheckbox = new Button( agentGroup, SWT.CHECK );
         useEclipseSkillsCheckbox.setText( "Include Eclipse workflow hints in agent system prompt" );
         useEclipseSkillsCheckbox.setLayoutData( new GridData( SWT.FILL, SWT.CENTER, true, false, 2, 1 ) );
+
+        verifyAfterEditCheckbox = new Button( agentGroup, SWT.CHECK );
+        verifyAfterEditCheckbox.setText( "Verify after edit (auto-run getCompilationErrors after eclipse-coder tools)" );
+        verifyAfterEditCheckbox.setLayoutData( new GridData( SWT.FILL, SWT.CENTER, true, false, 2, 1 ) );
+
+        Label maxRoundsLabel = new Label( agentGroup, SWT.NONE );
+        maxRoundsLabel.setText( "Max tool rounds per message:" );
+        maxToolRoundsText = new Text( agentGroup, SWT.BORDER );
+        maxToolRoundsText.setToolTipText( "Stops the agent after this many tool calls in one user message (minimum 1)." );
+        GridData maxRoundsData = new GridData( SWT.FILL, SWT.CENTER, true, false );
+        maxRoundsData.widthHint = 80;
+        maxToolRoundsText.setLayoutData( maxRoundsData );
     }
 
     public void syncAgentPolicyControls()
@@ -212,17 +228,44 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
         }
         allowWebToolsCheckbox.setSelection( presenter.isAllowWebTools() );
         useEclipseSkillsCheckbox.setSelection( presenter.isUseEclipseSkillsInPrompt() );
+        verifyAfterEditCheckbox.setSelection( presenter.isVerifyAfterEdit() );
+        maxToolRoundsText.setText( String.valueOf( presenter.getMaxToolRounds() ) );
     }
 
-    private void saveAgentPolicyFromControls()
+    private boolean saveAgentPolicyFromControls()
     {
         if ( allowWebToolsCheckbox == null || allowWebToolsCheckbox.isDisposed() )
         {
-            return;
+            return true;
+        }
+        int maxRounds = parseMaxToolRounds( maxToolRoundsText.getText().trim() );
+        if ( maxRounds < 1 )
+        {
+            showError( "Max tool rounds must be a positive integer." );
+            return false;
         }
         presenter.saveAgentToolPreferences(
                 allowWebToolsCheckbox.getSelection(),
-                useEclipseSkillsCheckbox.getSelection() );
+                useEclipseSkillsCheckbox.getSelection(),
+                verifyAfterEditCheckbox.getSelection(),
+                maxRounds );
+        return true;
+    }
+
+    private int parseMaxToolRounds( String text )
+    {
+        if ( text.isEmpty() )
+        {
+            return -1;
+        }
+        try
+        {
+            return Integer.parseInt( text );
+        }
+        catch ( NumberFormatException e )
+        {
+            return -1;
+        }
     }
 
     private void createServerTableColumns(CheckboxTableViewer checkboxTableViewer) {
@@ -563,7 +606,10 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     protected void performApply()
     {
         McpServerPreferencesLog.info( "performApply: invoked" );
-        saveAgentPolicyFromControls();
+        if ( !saveAgentPolicyFromControls() )
+        {
+            return;
+        }
         if ( commitServerDetails() )
         {
             super.performApply();
@@ -578,7 +624,10 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     public boolean performOk()
     {
         McpServerPreferencesLog.info( "performOk: invoked" );
-        saveAgentPolicyFromControls();
+        if ( !saveAgentPolicyFromControls() )
+        {
+            return false;
+        }
         if ( !commitServerDetails() )
         {
             McpServerPreferencesLog.warn( "performOk: commitServerDetails returned false" );

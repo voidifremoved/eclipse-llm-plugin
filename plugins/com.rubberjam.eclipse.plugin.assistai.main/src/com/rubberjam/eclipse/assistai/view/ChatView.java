@@ -57,6 +57,7 @@ import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.layout.RowLayout;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Menu;
 import org.eclipse.swt.widgets.MenuItem;
@@ -66,6 +67,7 @@ import org.eclipse.swt.widgets.ToolItem;
 import org.eclipse.ui.ISharedImages;
 import org.eclipse.ui.PlatformUI;
 
+import com.rubberjam.eclipse.assistai.agent.AgentTaskItem;
 import com.rubberjam.eclipse.assistai.agent.AgentViewPresenter;
 import com.rubberjam.eclipse.assistai.chat.Attachment;
 import com.rubberjam.eclipse.assistai.chat.Attachment.UiVisitor;
@@ -128,6 +130,14 @@ public class ChatView
 	private ToolItem modelDropdownItem;
 	
 	private ToolBar  actionToolBar;
+
+    private ToolItem planModeToolItem;
+
+    private ToolItem executePlanToolItem;
+
+    private Composite agentTasksPanel;
+
+    private Composite agentTasksListComposite;
 
 	private Menu modelMenu;
 	
@@ -261,7 +271,22 @@ public class ChatView
         // Create attachments panel at the top
         Composite attachmentsPanel = createAttachmentsPanel( controls );
         attachmentsPanel.setLayoutData( new GridData( SWT.FILL, SWT.FILL, true, false) );
-        
+
+        agentTasksPanel = new Composite( controls, SWT.NONE );
+        agentTasksPanel.setLayout( new GridLayout( 1, false ) );
+        agentTasksPanel.setLayoutData( new GridData( SWT.FILL, SWT.FILL, true, false ) );
+        Label tasksHeader = new Label( agentTasksPanel, SWT.NONE );
+        tasksHeader.setText( "Tasks" );
+        ScrolledComposite tasksScroll = new ScrolledComposite( agentTasksPanel, SWT.V_SCROLL | SWT.BORDER );
+        tasksScroll.setLayoutData( new GridData( SWT.FILL, SWT.FILL, true, true ) );
+        tasksScroll.setMinSize( 100, 60 );
+        agentTasksListComposite = new Composite( tasksScroll, SWT.NONE );
+        agentTasksListComposite.setLayout( new RowLayout( SWT.VERTICAL ) );
+        tasksScroll.setContent( agentTasksListComposite );
+        tasksScroll.setExpandHorizontal( true );
+        tasksScroll.setExpandVertical( true );
+        agentTasksPanel.setVisible( false );
+
         // Create input area with attachment button
         Composite inputContainer = new Composite(controls, SWT.NONE);
         GridLayout inputLayout = new GridLayout(2, false);
@@ -293,6 +318,8 @@ public class ChatView
         
         // Add toolbar items instead of buttons
         modelDropdownItem = createModelSelectorComposite(actionToolBar);
+        planModeToolItem = createPlanModeToolItem( actionToolBar );
+        executePlanToolItem = createExecutePlanToolItem( actionToolBar );
         createAttachmentToolItem(actionToolBar);
         createReplayToolItem(actionToolBar);
         createClearChatToolItem(actionToolBar);
@@ -416,7 +443,7 @@ public class ChatView
                     + " messageCount=" + messagesToRender.size() );
             for ( ChatMessage message : messagesToRender )
             {
-                if ( message == null || "system".equals( message.getRole() ) )
+                if ( message == null ||  message.getId() == null ||  message.getRole() == null || "system".equals( message.getRole() ) )
                 {
                     continue;
                 }
@@ -426,6 +453,10 @@ public class ChatView
                     if ( "tool".equals( message.getRole() ) )
                     {
                         setPersistedToolMessageHtmlInBrowser( message.getId(), message.getContent() );
+                    }
+                    else if ( "thinking".equals( message.getRole() ) )
+                    {
+                        setThinkingMessageHtmlInBrowser( message.getId(), message.getContent() );
                     }
                     else
                     {
@@ -566,6 +597,92 @@ public class ChatView
         return "**Tool:** `" + ( toolName != null ? toolName : "Tool" ) + "`\n\n"
                 + "**Status:** " + ( status != null ? status : "" ) + "\n\n"
                 + "```json\n" + ( details != null ? details : "" ) + "\n```";
+    }
+
+    private ToolItem createPlanModeToolItem( ToolBar toolbar )
+    {
+        ToolItem item = new ToolItem( toolbar, SWT.CHECK );
+        item.setText( "Plan" );
+        item.setToolTipText( "Plan mode: first reply is a checklist without tools; then click Execute" );
+        item.addSelectionListener( new SelectionAdapter()
+        {
+            @Override
+            public void widgetSelected( SelectionEvent e )
+            {
+                presenter.onPlanModeToggled( item.getSelection() );
+            }
+        } );
+        return item;
+    }
+
+    private ToolItem createExecutePlanToolItem( ToolBar toolbar )
+    {
+        ToolItem item = new ToolItem( toolbar, SWT.PUSH );
+        item.setText( "Execute" );
+        item.setEnabled( false );
+        item.setToolTipText( "Run the approved plan with workspace tools" );
+        item.addSelectionListener( new SelectionAdapter()
+        {
+            @Override
+            public void widgetSelected( SelectionEvent e )
+            {
+                presenter.onExecutePlan();
+            }
+        } );
+        return item;
+    }
+
+    public void setPlanModeSelected( boolean selected )
+    {
+        uiSync.asyncExec( () -> {
+            if ( planModeToolItem != null && !planModeToolItem.isDisposed() )
+            {
+                planModeToolItem.setSelection( selected );
+            }
+        } );
+    }
+
+    public void setExecutePlanEnabled( boolean enabled )
+    {
+        uiSync.asyncExec( () -> {
+            if ( executePlanToolItem != null && !executePlanToolItem.isDisposed() )
+            {
+                executePlanToolItem.setEnabled( enabled );
+            }
+        } );
+    }
+
+    public void setTaskChecklist( List<AgentTaskItem> items )
+    {
+        uiSync.asyncExec( () -> {
+            if ( isDisposed() || agentTasksListComposite == null || agentTasksListComposite.isDisposed() )
+            {
+                return;
+            }
+            for ( org.eclipse.swt.widgets.Control child : agentTasksListComposite.getChildren() )
+            {
+                child.dispose();
+            }
+            if ( items == null || items.isEmpty() )
+            {
+                if ( agentTasksPanel != null && !agentTasksPanel.isDisposed() )
+                {
+                    agentTasksPanel.setVisible( false );
+                    agentTasksPanel.getParent().layout( true, true );
+                }
+                return;
+            }
+            for ( AgentTaskItem task : items )
+            {
+                Button row = new Button( agentTasksListComposite, SWT.CHECK );
+                row.setText( task.text() );
+                row.setSelection( task.isDone() );
+                row.setEnabled( false );
+            }
+            agentTasksPanel.setVisible( true );
+            agentTasksListComposite.pack( true );
+            agentTasksPanel.getParent().layout( true, true );
+        } );
     }
 
     private ToolItem createNewAgentTabToolItem( ToolBar toolbar )
@@ -1245,6 +1362,10 @@ public class ChatView
         {
             cssClass = "chat-bubble you tool-call-bubble";
         }
+        else if ( "thinking".equals( role ) )
+        {
+            cssClass = "chat-bubble you thinking-bubble";
+        }
         else
         {
             cssClass = "chat-bubble you";
@@ -1303,6 +1424,43 @@ public class ChatView
         } );
     }
 
+    public void setThinkingPlaceholder( String assistantMessageId )
+    {
+        uiSync.asyncExec( () -> {
+            if ( isDisposed() )
+            {
+                return;
+            }
+            setThinkingPlaceholderInBrowser( assistantMessageId );
+        } );
+    }
+
+    public void appendThinkingMessage( String messageId, String thought )
+    {
+        uiSync.asyncExec( () -> {
+            if ( isDisposed() )
+            {
+                return;
+            }
+            cacheAppendMessageForSelectedTab( messageId, "thinking" );
+            cacheUpdateMessageForSelectedTab( messageId, thought );
+            appendMessageInBrowser( messageId, "thinking" );
+            setThinkingMessageHtmlInBrowser( messageId, thought );
+        } );
+    }
+
+    public void updateThinkingMessage( String messageId, String thought )
+    {
+        uiSync.asyncExec( () -> {
+            if ( isDisposed() )
+            {
+                return;
+            }
+            cacheUpdateMessageForSelectedTab( messageId, thought );
+            setThinkingMessageHtmlInBrowser( messageId, thought );
+        } );
+    }
+
     public void finishToolCallMessage( String messageId, String toolName, String details )
     {
         updateToolCallMessage( messageId, toolName, "Finished", details );
@@ -1353,7 +1511,76 @@ public class ChatView
                    .replace( "${details}", escapedDetails );
         String encodedHtml = java.util.Base64.getEncoder().encodeToString(
                 html.getBytes( java.nio.charset.StandardCharsets.UTF_8 ) );
-        browser.execute( "var target = document.getElementById(\"message-content-" + messageId + "\") || document.getElementById(\"message-" + messageId + "\"); if (target) { target.innerHTML = atob('" + encodedHtml + "'); }" );
+        setInnerHtmlFromUtf8Base64( messageId, encodedHtml );
+    }
+
+    private void setThinkingPlaceholderInBrowser( String assistantMessageId )
+    {
+        if ( browser == null || browser.isDisposed() )
+        {
+            return;
+        }
+        setAgentActivityHtmlInBrowser( assistantMessageId, "Thinking...", true );
+    }
+
+    public void setAgentActivityStatus( String assistantMessageId, String status )
+    {
+        uiSync.asyncExec( () -> {
+            if ( isDisposed() )
+            {
+                return;
+            }
+            setAgentActivityHtmlInBrowser( assistantMessageId, status, true );
+        } );
+    }
+
+    private void setAgentActivityHtmlInBrowser( String assistantMessageId, String status, boolean showSpinner )
+    {
+        if ( browser == null || browser.isDisposed() )
+        {
+            return;
+        }
+        String escaped = escapeHtml( safeText( status != null ? status : "" ) );
+        String spinner = showSpinner ? "<span class=\"thinking-spinner\"></span> " : "";
+        String html = "<p class=\"thinking-placeholder\">" + spinner + escaped + "</p>";
+        String encodedHtml = java.util.Base64.getEncoder().encodeToString(
+                html.getBytes( java.nio.charset.StandardCharsets.UTF_8 ) );
+        setInnerHtmlFromUtf8Base64( assistantMessageId, encodedHtml );
+    }
+
+    private void setInnerHtmlFromUtf8Base64( String messageId, String encodedHtml )
+    {
+        if ( browser == null || browser.isDisposed() )
+        {
+            return;
+        }
+        String safeB64 = encodedHtml.replace( "\\", "\\\\" ).replace( "'", "\\'" );
+        browser.execute(
+                "var target = document.getElementById(\"message-content-" + messageId
+                        + "\") || document.getElementById(\"message-" + messageId + "\");"
+                        + "if (target) {"
+                        + "  target.innerHTML = (typeof decodeUtf8Base64 === 'function')"
+                        + "    ? decodeUtf8Base64('" + safeB64 + "') : atob('" + safeB64 + "');"
+                        + "}" );
+    }
+
+    private void setThinkingMessageHtmlInBrowser( String messageId, String thought )
+    {
+        if ( browser == null || browser.isDisposed() )
+        {
+            return;
+        }
+        String escaped = escapeHtml( safeText( thought ) );
+        String html = """
+                <div class="thinking-title">Thinking</div>
+                <details class="thinking-details" open>
+                    <summary>Reasoning</summary>
+                    <pre><code>${thought}</code></pre>
+                </details>
+                """.replace( "${thought}", escaped );
+        String encodedHtml = java.util.Base64.getEncoder().encodeToString(
+                html.getBytes( java.nio.charset.StandardCharsets.UTF_8 ) );
+        setInnerHtmlFromUtf8Base64( messageId, encodedHtml );
     }
 
     private void setPersistedToolMessageHtmlInBrowser( String messageId, String content )
