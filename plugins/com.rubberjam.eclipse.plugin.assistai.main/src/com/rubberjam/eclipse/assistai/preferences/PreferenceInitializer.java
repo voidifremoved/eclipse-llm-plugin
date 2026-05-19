@@ -41,7 +41,7 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer
         
         IPreferenceStore store = Activator.getDefault().getPreferenceStore();
 
-        ModelApiDescriptor gpt4 = new ModelApiDescriptor( "5e8d3a9f-c5e2-4c1d-9f3b-a7e6b4d2c1e0", "openai", "https://api.openai.com/v1/responses", "", 10, 30, "gpt-5.5", ModelApiDescriptor.TEMPERATURE_NOT_SUPPORTED, true, true );
+        ModelApiDescriptor gpt4 = new ModelApiDescriptor( "5e8d3a9f-c5e2-4c1d-9f3b-a7e6b4d2c1e0", "openai", "https://api.openai.com/v1", "", 10, 30, "gpt-5.5", ModelApiDescriptor.TEMPERATURE_NOT_SUPPORTED, true, true );
         ModelApiDescriptor claude = new ModelApiDescriptor( "8d099c40-5a01-483b-878f-bfed8c0d1bbf", "claude", "https://api.anthropic.com/v1/messages", "", 10, 30, "claude-opus-4-7", ModelApiDescriptor.TEMPERATURE_NOT_SUPPORTED, true, true );
         ModelApiDescriptor groq = new ModelApiDescriptor( "9c4d7e8f-a1b2-3c4d-5e6f-7a8b9c0d1e2f", "groq", "https://api.groq.com/openai/v1/chat/completions", "", 10, 30, "groq/compound", ModelApiDescriptor.TEMPERATURE_NOT_SUPPORTED, false, true );
         ModelApiDescriptor deepseek = new ModelApiDescriptor( "4e28814b-d7cd-42f5-bd3e-0df577a3d2c4", "deepseek", "https://api.deepseek.com/chat/completions", "", 10, 30, "deepseek-chat", 7, false, true );
@@ -50,7 +50,7 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer
         ModelApiDescriptor mistral = new ModelApiDescriptor(
                 "",
                 "mistral",
-                "https://api.mistral.ai",
+                "https://api.mistral.ai/v1",
                 "",
                 10,
                 30,

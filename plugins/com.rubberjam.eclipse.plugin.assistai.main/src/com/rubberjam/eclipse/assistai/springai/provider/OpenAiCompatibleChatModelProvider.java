@@ -50,10 +50,11 @@ public final class OpenAiCompatibleChatModelProvider implements ChatModelProvide
     }
 
     /**
-     * {@link OpenAiSetup} configures the official OpenAI Java SDK base URL.
-     * Descriptors often store the full path for legacy HTTP clients.
+     * {@link OpenAiSetup} configures the official OpenAI Java SDK, which expects a base URL
+     * ending in {@code /v1} (e.g. {@code https://api.mistral.ai/v1}). Legacy descriptors often
+     * stored the full chat path or a host without {@code /v1}.
      */
-    private static String toBaseUrl( String apiUrl )
+    static String toBaseUrl( String apiUrl )
     {
         if ( apiUrl == null || apiUrl.isBlank() )
         {
@@ -66,12 +67,25 @@ public final class OpenAiCompatibleChatModelProvider implements ChatModelProvide
         }
         if ( base.endsWith( "/v1/chat/completions" ) )
         {
-            return base.substring( 0, base.length() - "/v1/chat/completions".length() );
+            return base.substring( 0, base.length() - "/chat/completions".length() );
         }
         if ( base.endsWith( "/chat/completions" ) )
         {
-            return base.substring( 0, base.length() - "/chat/completions".length() );
+            base = base.substring( 0, base.length() - "/chat/completions".length() );
         }
-        return base;
+        if ( base.endsWith( "/v1/responses" ) )
+        {
+            return base.substring( 0, base.length() - "/responses".length() );
+        }
+        int v1Path = base.indexOf( "/v1/" );
+        if ( v1Path >= 0 )
+        {
+            return base.substring( 0, v1Path + 3 );
+        }
+        if ( base.endsWith( "/v1" ) )
+        {
+            return base;
+        }
+        return base + "/v1";
     }
 }
