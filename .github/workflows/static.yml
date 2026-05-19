@@ -35,7 +35,9 @@ jobs:
           echo "DISPLAY=:99" >> $GITHUB_ENV
 
       - name: Build with Tycho
-        run: ./mvnw --batch-mode "-Dtycho.localArtifacts=ignore" clean verify
+        run: |
+          chmod +x mvnw
+          ./mvnw --batch-mode "-Dtycho.localArtifacts=ignore" clean verify
 
       - name: Upload test logs on failure
         if: failure()
