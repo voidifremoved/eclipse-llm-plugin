@@ -10,25 +10,54 @@ After `mvn verify`:
 .\scripts\inventory-p2-repository.ps1
 ```
 
+Archive output when cutting a release:
+
+```powershell
+.\scripts\inventory-p2-repository.ps1 -OutFile docs\inventory\assistai-1.0.7-bundles.txt
+```
+
 To list wrapped Maven names from a Tycho resolve log:
 
 ```powershell
-mvn -DskipTests package 2>&1 | Tee-Object build.log
+.\mvnw.cmd -DskipTests package 2>&1 | Tee-Object build.log
 .\scripts\list-wrapped-bundles.ps1 build.log
 ```
 
-## Current policy (assistai-owned)
+## Embed vs wrapper vs target-generated (decisions)
 
-| Artifact | Approach | Notes |
-|----------|----------|-------|
-| OkHttp | **Owned wrapper** | `plugins/com.rubberjam.eclipse.assistai.osgi.okhttp` — explicit MANIFEST, no invalid `!kotlin.*` imports |
-| Tomcat embed core | **Embedded in main** | `lib/tomcat-embed-core-*.jar` on main bundle classpath |
-| MCP JSON Jackson2 | **Embedded in main** | `lib/mcp-json-jackson2-2.0.0-M2.jar` (ServiceLoader); `mcp-core`/`mcp` from target at 2.0.0-M2 |
-| Spring AI / provider SDKs | **Target-generated** | `missingManifest=generate` on Maven target location |
+| Artifact | Approach | Rationale |
+|----------|----------|-----------|
+| **OkHttp / Okio / Kotlin** | **Owned wrapper** | `plugins/com.rubberjam.eclipse.assistai.osgi.okhttp` — explicit MANIFEST, valid Kotlin imports; Tycho exclusions on SDK okhttp clients |
+| **Tomcat embed core** | **Embedded in main** | `lib/tomcat-embed-core-*.jar` on main `Bundle-Classpath`; servlet API from p2 `jakarta.servlet-api`, not from Tomcat’s transitive servlet JAR |
+| **MCP JSON Jackson2** | **Embedded in main** | `lib/mcp-json-jackson2-2.0.0-M2.jar` for ServiceLoader wiring; **not** a target root; excluded from `mcp` / `mcp-core` / `spring-ai-mcp` |
+| **MCP `mcp` + `mcp-core`** | **Target-generated** | Explicit roots at 2.0.0-M2; `spring-ai-mcp` excludes older MCP 1.x transitives |
+| **Spring AI + Spring Framework** | **Target-generated** | `missingManifest=generate`; explicit Spring 7 roots; `slf4j-api` excluded (use Eclipse `org.slf4j`) |
+| **Jackson 2 + Jackson 3** | **Target-generated** | Coexist: `com.fasterxml.jackson.*` (2.x) and `tools.jackson.*` (3.x) — different package namespaces |
+| **NetworkNT json-schema-validator** | **Target-generated (3.x only)** | Root `3.0.1` only; 2.x root removed to avoid duplicate `com.networknt.schema` providers |
+| **Provider SDKs** (OpenAI, Anthropic, Google GenAI) | **Target-generated** | Explicit roots; okhttp exclusions on `*-client-okhttp` artifacts |
 
-## Next decisions (Phase 6)
+Owned wrappers are reserved for cases where Tycho-generated manifests are wrong or unstable (OkHttp/Kotlin). Embedding is reserved for classpath-local integration (Tomcat, MCP JSON). Everything else stays target-generated with `includeDependencyDepth=direct` and documented exclusions.
 
-1. Run `inventory-p2-repository.ps1` and archive output when cutting a release.
-2. Compare wrapped Spring/MCP bundles against explicit roots in `releng/.../assistai.target`.
-3. Add Tycho target filters only where duplicate package providers cause resolver conflicts.
-4. Consider owned wrappers for Tomcat or MCP JSON if generated manifests need tightening.
+## Tycho target exclusions (duplicate package providers)
+
+Maven `<exclusions>` on target roots in `releng/.../assistai.target` (sequence 29+):
+
+| Excluded from | Artifact | Use instead |
+|---------------|----------|-------------|
+| `mcp`, `mcp-core` | `mcp-json-jackson2` | Embedded JAR on main bundle |
+| `spring-ai-mcp` | `mcp`, `mcp-core`, `mcp-json-jackson2` | Explicit MCP 2.0 roots + embed |
+| Spring Framework 7 roots | `slf4j-api` | Eclipse platform `org.slf4j` |
+| `spring-web` | `jakarta.servlet-api` | p2 IU `jakarta.servlet-api` |
+| `openai-java-client-okhttp`, `anthropic-java-client-okhttp` | `okhttp`, `okio-jvm` | `wrapped.com.squareup.okhttp3.okhttp` |
+| `anthropic-java-client-okhttp` | `kotlin-stdlib-jdk8` | `kotlin-osgi-bundle` target root |
+
+Removed duplicate target roots: `json-schema-validator` 2.0.1, `mcp-json-jackson2` (embed only).
+
+If a new resolver conflict appears, prefer a targeted exclusion on the pulling root before adding another explicit target dependency.
+
+## Release review checklist
+
+1. Run `.\mvnw.cmd clean verify` (or `-DskipTests` for a faster compile check).
+2. Run `.\scripts\inventory-p2-repository.ps1 -OutFile docs\inventory\assistai-<version>-bundles.txt`.
+3. Compare wrapped Spring/MCP bundle counts to prior inventory; investigate new `wrapped.*` names.
+4. Confirm feature `feature.xml` still lists only first-party plugins (OkHttp wrapper); transitives come from `includeAllDependencies`.

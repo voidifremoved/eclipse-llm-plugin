@@ -13,7 +13,7 @@ Make the Eclipse plugin build and dependency model boring, repeatable, and easie
 | 3 Centralise versions | **Mostly complete** | Parent POM properties + `docs/DEPENDENCIES.md`. Kept `includeDependencyDepth=direct` with explicit 2nd-level roots; `list-wrapped-bundles.ps1` added. |
 | 4 Isolate Spring AI | **Complete** | `springai` package: factory, registry, providers, `MessageAdapter`, `McpToolBridge`, `AgentChatEngine`/`AgentChatSession`. Agent UI uses `AgentSession` facade + `AgentStreamChunk` only. MCP SDK 2.0.0-M2 aligned with Spring AI. |
 | 5 Provider migration | **Mostly complete** | Agent chat and code completion on Spring AI. Legacy `*StreamJavaHttpClient` stack and `ChatViewPresenter` removed. |
-| 6 Own OSGi metadata | **Started** | OkHttp owned wrapper; `scripts/inventory-p2-repository.ps1` + `docs/OSGI_BUNDLES.md`. |
+| 6 Own OSGi metadata | **Complete** | Embed/wrapper policy documented; target exclusions for duplicate providers; inventory script with `-OutFile`. |
 | 7 Repository verification | **Mostly complete** | Feature-only `category.xml` + `includeAllDependencies`. Full `./mvnw clean verify` passes. Install steps documented in `BUILDING.md`. |
 
 ---
@@ -62,10 +62,10 @@ Make the Eclipse plugin build and dependency model boring, repeatable, and easie
 
 ### Phase 6: Own OSGi Metadata
 
-- [x] Inventory script for repository plugins (`scripts/inventory-p2-repository.ps1`)
+- [x] Inventory script for repository plugins (`scripts/inventory-p2-repository.ps1`, optional `-OutFile`)
 - [x] Document embed vs wrapper policy (`docs/OSGI_BUNDLES.md`)
-- [ ] Decide embed vs wrapper vs target-generated for Tomcat, MCP JSON, Spring stack (per release review)
-- [ ] Tycho target filters for duplicate package providers
+- [x] Decide embed vs wrapper vs target-generated for Tomcat, MCP JSON, Spring stack (see `docs/OSGI_BUNDLES.md`)
+- [x] Tycho target Maven exclusions for duplicate package providers (target sequence 29+)
 
 ### Phase 7: Repository and Install Verification
 
@@ -88,5 +88,5 @@ See `docs/DEPENDENCIES.md` for how to add dependencies.
 ## Immediate next work
 
 1. Add integration tests for Spring AI completion with MCP tool filtering.
-3. Phase 6: run `inventory-p2-repository.ps1` on release builds; decide owned wrappers for Tomcat / MCP JSON.
-4. Phase 4: thin `AgentSession` behind SPI; optional `assistai.core` bundle for separate Spring AI plugin.
+2. Phase 7: verify update from public update site if compatibility matters.
+3. Phase 4 (optional): separate `assistai.core` OSGi bundle for Spring AI once reactor cycle allows.

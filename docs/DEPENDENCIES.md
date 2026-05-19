@@ -67,7 +67,7 @@ Do **not** hand-maintain long bundle lists in `category.xml`.
 
 | Module | Role |
 |--------|------|
-| `com.rubberjam.eclipse.plugin.assistai.main` | Eclipse UI, MCP tools, legacy HTTP clients, agent session UI |
+| `com.rubberjam.eclipse.plugin.assistai.main` | Eclipse UI, MCP tools, agent session UI, embedded Tomcat/MCP JSON |
 | `com.rubberjam.eclipse.assistai.springai` (package in main plugin) | Spring AI factory, registry, providers, message adapter |
 | `com.rubberjam.eclipse.assistai.osgi.okhttp` | OkHttp / Okio / Kotlin OSGi wrapper |
 

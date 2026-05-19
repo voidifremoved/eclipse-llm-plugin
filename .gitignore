@@ -1,3 +1,6 @@
+# Release bundle inventories (generated locally)
+docs/inventory/*.txt
+
 /@dot
 /exports
 bin/

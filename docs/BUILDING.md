@@ -106,3 +106,12 @@ To capture wrapped Maven bundle symbolic names from a build log:
 .\scripts\list-wrapped-bundles.ps1 build.log
 ```
 
+To list all bundles published in the update site (release inventory):
+
+```powershell
+.\scripts\inventory-p2-repository.ps1
+.\scripts\inventory-p2-repository.ps1 -OutFile docs\inventory\assistai-bundles.txt
+```
+
+See `docs/OSGI_BUNDLES.md` for embed vs wrapper policy and target exclusion rules.
+
