@@ -31,6 +31,7 @@ import com.rubberjam.eclipse.assistai.chat.Attachment;
 import com.rubberjam.eclipse.assistai.chat.Attachment.FileContentAttachment;
 import static com.rubberjam.eclipse.assistai.tools.ImageUtilities.createPreview;
 import com.rubberjam.eclipse.assistai.chat.ChatMessage;
+import com.rubberjam.eclipse.assistai.prompt.ChatMessageFactory;
 import com.rubberjam.eclipse.assistai.prompt.PromptRepository;
 import com.rubberjam.eclipse.assistai.resources.IResourceCacheListener;
 import com.rubberjam.eclipse.assistai.resources.ResourceCacheEvent;
@@ -59,6 +60,7 @@ public class AgentViewPresenter implements IResourceCacheListener
     @Inject private Provider<AgentSessionManager> sessionManagerProvider;
     @Inject private PartAccessor partAccessor;
     @Inject private PromptRepository promptRepository;
+    @Inject private ChatMessageFactory chatMessageFactory;
     @Inject private ModelApiDescriptorRepository modelRepository;
     @Inject private ILog logger;
     @Inject private CodeEditingService codeEditingService;
@@ -111,20 +113,15 @@ public class AgentViewPresenter implements IResourceCacheListener
                     ? new ArrayList<>( attachments )
                     : new ArrayList<>( tabState.attachments );
 
-            // Handle slash commands mapping manually, similar to ChatViewPresenter
             if ( text.startsWith( "/" ) )
             {
                 String[] parts = text.split( " ", 2 );
                 String command = parts[0].substring( 1 );
                 String rest = parts.length > 1 ? parts[1] : "";
-                try
+                String expanded = chatMessageFactory.expandSlashCommand( command, rest );
+                if ( expanded != null )
                 {
-                    String template = promptRepository.getPrompt( command );
-                    text = template.replace( "${userMessage}", rest );
-                }
-                catch ( Exception e )
-                {
-                    // Ignore missing prompt
+                    text = expanded;
                 }
             }
 
@@ -695,7 +692,10 @@ public class AgentViewPresenter implements IResourceCacheListener
             AgentSession session = sessionManager.getSession( tabId );
             if ( session != null )
             {
-                session.appendToolMessage( messageId, toPersistedToolMessage( event.toolName(), "Running", event.input() ) );
+                session.appendToolMessage(
+                        messageId,
+                        event.toolName(),
+                        toPersistedToolMessage( event.toolName(), "Running", event.input() ) );
                 sessionManager.persistTabs();
             }
             if ( tabId.equals( sessionManager.getActiveTabId() ) )

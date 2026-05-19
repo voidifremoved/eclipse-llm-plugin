@@ -97,6 +97,29 @@ public class ChatMessageFactory
         return message;        
     }
     
+    /**
+     * Expands a slash command (e.g. {@code discuss}) with optional trailing user text and
+     * Eclipse context placeholders ({@code ${currentFileName}}, etc.).
+     *
+     * @return expanded prompt, or {@code null} if the command is unknown
+     */
+    public String expandSlashCommand( String commandName, String userText )
+    {
+        if ( commandName == null || commandName.isBlank() )
+        {
+            return null;
+        }
+        return promptRepository.findPromptByCommandName( commandName.trim() )
+                .map( prompt -> {
+                    String template = promptRepository.getPrompt( prompt.name() );
+                    String rest = userText != null ? userText : "";
+                    String withPlaceholders = template.replace( "${userMessage}", rest )
+                            .replace( "${message}", rest );
+                    return updatePromptText( withPlaceholders );
+                } )
+                .orElse( null );
+    }
+
     public String updatePromptText(String promptText) 
     {
         var pattern = Pattern.compile("\\$\\{(\\S+)\\}");

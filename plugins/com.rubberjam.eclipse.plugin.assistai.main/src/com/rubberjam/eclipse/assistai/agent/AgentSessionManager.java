@@ -276,8 +276,10 @@ public class AgentSessionManager
     public void refreshMcpToolsOnAllSessions()
     {
         ensureLoaded();
+        String systemPrompt = promptBuilder.buildSystemPrompt();
         for ( AgentSession session : sessions.values() )
         {
+            session.updateSystemPrompt( systemPrompt );
             String modelUid = session.getCurrentModelUid();
             if ( modelUid != null )
             {

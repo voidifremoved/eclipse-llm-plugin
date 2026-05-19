@@ -9,6 +9,7 @@ import java.util.UUID;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.model.ModelOptionsUtils;
 
@@ -39,7 +40,32 @@ public class MessageAdapter
         {
             return new SystemMessage( content );
         }
+        if ( "tool".equalsIgnoreCase( role ) )
+        {
+            return toToolResponseMessage( chatMessage, content );
+        }
         return new UserMessage( content );
+    }
+
+    /**
+     * Converts a persisted tool bubble to a Spring AI tool response for multi-turn context.
+     */
+    public static Message toToolResponseMessage( ChatMessage chatMessage, String toolCallId, String toolName, String responseText )
+    {
+        String id = toolCallId != null ? toolCallId : chatMessage.getId();
+        String name = toolName != null ? toolName : chatMessage.getName();
+        if ( name == null || name.isBlank() )
+        {
+            name = "tool";
+        }
+        String data = responseText != null ? responseText : "";
+        ToolResponseMessage.ToolResponse response = new ToolResponseMessage.ToolResponse( id, name, data );
+        return ToolResponseMessage.builder().responses( List.of( response ) ).build();
+    }
+
+    private static Message toToolResponseMessage( ChatMessage chatMessage, String content )
+    {
+        return toToolResponseMessage( chatMessage, chatMessage.getId(), chatMessage.getName(), content );
     }
 
     private static String appendAttachmentContent( ChatMessage chatMessage, String content )

@@ -626,7 +626,7 @@ public class ChatView
                 new TextContentAdapter(),  // Adapter to apply proposals to the text field
                 proposalProvider,          // Our custom proposal provider
                 null,                      // No key activation - we'll handle Tab manually
-                null);                     // No auto-activation characters
+                new char[] { '/' } );      // Open proposals when typing slash commands
         
         // Configure the adapter behavior
         adapter.setProposalAcceptanceStyle(ContentProposalAdapter.PROPOSAL_REPLACE);

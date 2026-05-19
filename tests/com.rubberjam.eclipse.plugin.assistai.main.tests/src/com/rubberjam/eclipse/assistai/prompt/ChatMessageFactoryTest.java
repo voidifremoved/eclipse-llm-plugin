@@ -2,6 +2,7 @@ package com.rubberjam.eclipse.assistai.prompt;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -148,6 +149,28 @@ public class ChatMessageFactoryTest {
         assertEquals(messageText, message.getContent());
     }
     
+    @Test
+    public void testExpandSlashCommand_discuss() throws CoreException
+    {
+        promptRepository.setPrompt( Prompts.DISCUSS.name(),
+                "Discuss ${currentFileName} in ${currentProjectName}: ${message}" );
+
+        IFile testFile = createFile( "/src/DiscussMe.java", "public class DiscussMe {}" );
+        openFileInEditor( testFile );
+
+        String expanded = chatMessageFactory.expandSlashCommand( "discuss", "what does this do?" );
+        assertNotNull( expanded );
+        assertTrue( expanded.contains( "DiscussMe.java" ) );
+        assertTrue( expanded.contains( TEST_PROJECT_NAME ) );
+        assertTrue( expanded.contains( "what does this do?" ) );
+    }
+
+    @Test
+    public void testExpandSlashCommand_unknownReturnsNull()
+    {
+        assertNull( chatMessageFactory.expandSlashCommand( "not-a-command", "hi" ) );
+    }
+
     @Test
     public void testCreateUserChatMessage_Document() throws CoreException {
         // Setup test data - use ${currentFileName} which resolves deterministically from the opened file

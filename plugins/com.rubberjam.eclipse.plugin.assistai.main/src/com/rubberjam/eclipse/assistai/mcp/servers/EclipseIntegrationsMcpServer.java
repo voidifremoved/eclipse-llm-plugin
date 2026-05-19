@@ -311,7 +311,7 @@ public class EclipseIntegrationsMcpServer
 
     @Tool(name = "executeQuickFix", description = "Applies a specific quick fix proposal to a compilation problem. Use getCompilationErrors first to obtain the Marker ID and proposal index.", type = "object")
     public String executeQuickFix(
-            @ToolParam(name = "markerId", description = "The Marker ID of the problem (from getCompilationErrors or getQuickFixes)", required = true) String markerId,
+            @ToolParam(name = "markerId", description = "The Marker ID of the problem (from getCompilationErrors)", required = true) String markerId,
             @ToolParam(name = "proposalIndex", description = "The 0-based index of the quick fix proposal to apply (from the quick fixes list)", required = true) String proposalIndex)
     {
         return codeAnalysisService.executeQuickFix(Long.parseLong(markerId), Integer.parseInt(proposalIndex));

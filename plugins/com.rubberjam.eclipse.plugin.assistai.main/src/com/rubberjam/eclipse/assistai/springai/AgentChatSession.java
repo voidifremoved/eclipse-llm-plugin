@@ -29,7 +29,7 @@ public class AgentChatSession
     private final ChatModelRegistry modelRegistry;
     private final List<Message> conversationHistory;
     private final List<ChatMessage> displayHistory;
-    private final String systemPrompt;
+    private String systemPrompt;
     private ToolCallEventListener toolCallEventListener = ToolCallEventListener.noop();
 
     public AgentChatSession( ChatModelRegistry modelRegistry, McpToolBridge toolBridge, String systemPrompt )
@@ -75,6 +75,7 @@ public class AgentChatSession
         {
             throw new IllegalStateException( "Agent chat session not initialized with a model." );
         }
+        rebuildConversationHistory();
         rebuildChatClient();
 
         ChatMessage userChatMsg = new ChatMessage( messageId, "user" );
@@ -103,11 +104,25 @@ public class AgentChatSession
         displayHistory.add( msg );
     }
 
-    public void appendToolMessage( String messageId, String content )
+    public void appendToolMessage( String messageId, String toolName, String content )
     {
-        ChatMessage msg = new ChatMessage( messageId, "tool" );
+        ChatMessage msg = new ChatMessage( messageId, toolName, "tool" );
         msg.setContent( content );
         displayHistory.add( msg );
+    }
+
+    public void updateSystemPrompt( String newSystemPrompt )
+    {
+        if ( newSystemPrompt == null )
+        {
+            return;
+        }
+        this.systemPrompt = newSystemPrompt;
+        rebuildConversationHistory();
+        if ( currentModel != null )
+        {
+            rebuildChatClient();
+        }
     }
 
     public void updateMessageContent( String messageId, String content )
@@ -227,11 +242,27 @@ public class AgentChatSession
         conversationHistory.add( new org.springframework.ai.chat.messages.SystemMessage( systemPrompt ) );
         for ( ChatMessage message : displayHistory )
         {
-            if ( !"tool".equals( message.getRole() ) )
+            if ( "tool".equals( message.getRole() ) )
+            {
+                if ( isCompletedToolMessage( message.getContent() ) )
+                {
+                    conversationHistory.add( MessageAdapter.toSpringAi( message ) );
+                }
+            }
+            else
             {
                 conversationHistory.add( MessageAdapter.toSpringAi( message ) );
             }
         }
+    }
+
+    private static boolean isCompletedToolMessage( String content )
+    {
+        if ( content == null || content.isBlank() )
+        {
+            return false;
+        }
+        return content.contains( "**Status:** Finished" ) || content.contains( "**Status:** Failed" );
     }
 
     private List<ChatMessage> getDisplayHistorySnapshot()

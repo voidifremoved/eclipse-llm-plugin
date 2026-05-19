@@ -54,7 +54,7 @@ Step-by-step roadmap based on the current plugin codebase (May 2026). Use this a
 
 ## 3. Step-by-step implementation plan
 
-### Phase 0 — Stabilize foundations (1–2 weeks)
+### Phase 0 — Stabilize foundations (1–2 weeks) ✅ Completed
 
 **Goal:** Reliable tools and correct agent inputs.
 

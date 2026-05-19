@@ -52,9 +52,14 @@ public class AgentSession
         chatSession.appendAssistantResponse( messageId, responseText );
     }
 
-    public void appendToolMessage( String messageId, String content )
+    public void appendToolMessage( String messageId, String toolName, String content )
     {
-        chatSession.appendToolMessage( messageId, content );
+        chatSession.appendToolMessage( messageId, toolName, content );
+    }
+
+    public void updateSystemPrompt( String newSystemPrompt )
+    {
+        chatSession.updateSystemPrompt( newSystemPrompt );
     }
 
     public void updateMessageContent( String messageId, String content )

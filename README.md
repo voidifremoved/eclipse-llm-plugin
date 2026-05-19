@@ -177,8 +177,8 @@ External agents don't know what you're looking at in Eclipse -- unless they ask.
 | getMethodCallHierarchy | Call hierarchy (callers) for a method |
 | getTypeHierarchy | Type hierarchy (supertypes, interfaces, subtypes) |
 | findReferences | All references to a type, method, or field across the workspace |
-| getCompilationErrors | Compilation errors from the workspace or a project |
-| getQuickFixes | Available quick fixes for compilation errors |
+| getCompilationErrors | Compilation errors from the workspace or a project (includes quick-fix proposals with marker IDs) |
+| executeQuickFix | Apply a quick fix from `getCompilationErrors` using marker ID and proposal index |
 | getImportSuggestions | Import candidates for unresolved types |
 | fileSearch | Substring search in workspace files |
 | fileSearchRegExp | Regex search in workspace files |

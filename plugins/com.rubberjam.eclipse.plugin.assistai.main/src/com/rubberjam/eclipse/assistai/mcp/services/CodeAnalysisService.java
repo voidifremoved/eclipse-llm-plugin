@@ -744,7 +744,7 @@ public class CodeAnalysisService
     /**
      * Executes a specific quick fix proposal for a problem marker.
      *
-     * @param markerId      The marker ID as returned by getCompilationErrors or getQuickFixes
+     * @param markerId      The marker ID as returned by getCompilationErrors
      * @param proposalIndex The index of the proposal to apply (0-based, from the quick fixes list)
      * @return Result message indicating success or failure
      */
