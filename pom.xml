@@ -12,6 +12,7 @@
   <modules>
     <module>releng/com.rubberjam.eclipse.assistai.target</module>
     <module>plugins/com.rubberjam.eclipse.plugin.assistai.main</module>
+    <module>plugins/com.rubberjam.eclipse.assistai.osgi.okhttp</module>
     <module>features/com.rubberjam.eclipse.feature.assistai</module>
     <module>tests/com.rubberjam.eclipse.plugin.assistai.main.tests</module>
     <module>releng/com.rubberjam.eclipse.assistai.repository</module>

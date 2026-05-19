@@ -29,6 +29,9 @@
   <bundle id="io.modelcontextprotocol.sdk.mcp-core" version="0.0.0">
     <category name="assistai-deps"/>
   </bundle>
+  <bundle id="io.modelcontextprotocol.sdk.mcp-json-jackson2" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
 
   <!-- Micrometer context propagation (io.micrometer.context — Activator / Spring AI) -->
   <bundle id="wrapped.io.micrometer.context-propagation" version="0.0.0">
@@ -118,6 +121,18 @@
   <bundle id="org.yaml.snakeyaml" version="0.0.0">
     <category name="assistai-deps"/>
   </bundle>
+  <bundle id="org.snakeyaml.snakeyaml-engine" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="tools.jackson.dataformat.jackson-dataformat-yaml" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="org.jetbrains.kotlin.osgi-bundle" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="slf4j.simple" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
   <bundle id="org.jspecify.jspecify" version="0.0.0">
     <category name="assistai-deps"/>
   </bundle>
@@ -161,10 +176,13 @@
   <bundle id="wrapped.org.springframework.ai.spring-ai-openai" version="0.0.0">
     <category name="assistai-deps"/>
   </bundle>
-  <bundle id="wrapped.org.springframework.ai.spring-ai-anthropic" version="0.0.0">
+  <bundle id="wrapped.com.openai.openai-java-core" version="0.0.0">
     <category name="assistai-deps"/>
   </bundle>
-  <bundle id="wrapped.org.springframework.ai.spring-ai-vertex-ai-gemini" version="0.0.0">
+  <bundle id="wrapped.com.openai.openai-java-client-okhttp" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <bundle id="wrapped.org.springframework.ai.spring-ai-anthropic" version="0.0.0">
     <category name="assistai-deps"/>
   </bundle>
   <bundle id="wrapped.org.springframework.ai.spring-ai-google-genai" version="0.0.0">
@@ -183,6 +201,10 @@
     <category name="assistai-deps"/>
   </bundle>
   <bundle id="wrapped.com.anthropic.anthropic-java-client-okhttp" version="0.0.0">
+    <category name="assistai-deps"/>
+  </bundle>
+  <!-- wrapped.com.squareup.okhttp3.okhttp built from plugins/com.rubberjam.eclipse.assistai.osgi.okhttp -->
+  <bundle id="wrapped.com.squareup.okhttp3.okhttp" version="0.0.0">
     <category name="assistai-deps"/>
   </bundle>
 

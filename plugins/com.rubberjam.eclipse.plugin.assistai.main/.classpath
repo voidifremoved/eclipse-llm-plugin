@@ -30,7 +30,12 @@
 			<attribute name="maven.pomderived" value="true"/>
 		</attributes>
 	</classpathentry>
-	<classpathentry exported="true" kind="lib" path="lib/mcp-json-jackson2-1.1.2.jar"/>
+	<classpathentry exported="true" kind="lib" path="lib/mcp-json-jackson2-1.1.2.jar">
+		<accessrules>
+			<access rule="io/modelcontextprotocol/json/jackson2/*"/>
+			<access rule="io/modelcontextprotocol/json/schema/jackson2/*"/>
+		</accessrules>
+	</classpathentry>
 	<classpathentry exported="true" kind="lib" path="lib/tomcat-embed-core-11.0.21.jar"/>
 	<classpathentry kind="con" path="org.eclipse.m2e.MAVEN2_CLASSPATH_CONTAINER">
 		<attributes>

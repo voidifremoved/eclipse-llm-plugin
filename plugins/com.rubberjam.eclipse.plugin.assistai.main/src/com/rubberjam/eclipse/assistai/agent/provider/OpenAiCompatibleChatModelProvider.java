@@ -5,7 +5,7 @@ import com.rubberjam.eclipse.assistai.models.ModelApiDescriptor;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.openai.setup.OpenAiSetup;
 
 /**
  * OpenAI-compatible APIs (OpenAI, Mistral, Groq, Grok, DeepSeek, etc.).
@@ -22,34 +22,35 @@ public final class OpenAiCompatibleChatModelProvider implements ChatModelProvide
     public ChatModel create( ModelApiDescriptor descriptor )
     {
         String baseUrl = toBaseUrl( descriptor.apiUrl() );
-        String completionsPath = completionsPathFor( descriptor.apiUrl() );
 
-        OpenAiApi api = OpenAiApi.builder()
+        OpenAiChatOptions options = OpenAiChatOptions.builder()
             .baseUrl( baseUrl )
-            .completionsPath( completionsPath )
             .apiKey( descriptor.apiKey() )
+            .model( descriptor.modelName() )
+            .temperature( descriptor.scaledTemperature().map( Float::doubleValue ).orElse( null ) )
             .build();
 
         return OpenAiChatModel.builder()
-            .openAiApi( api )
-            .defaultOptions( OpenAiChatOptions.builder()
-                .model( descriptor.modelName() )
-                .temperature( descriptor.scaledTemperature().map( Float::doubleValue ).orElse( null ) )
-                .build() )
+            .openAiClient( OpenAiSetup.setupSyncClient(
+                options.getBaseUrl(),
+                options.getApiKey(),
+                options.getCredential(),
+                options.getMicrosoftDeploymentName(),
+                options.getMicrosoftFoundryServiceVersion(),
+                options.getOrganizationId(),
+                options.isMicrosoftFoundry(),
+                options.isGitHubModels(),
+                options.getModel(),
+                options.getTimeout(),
+                options.getMaxRetries(),
+                options.getProxy(),
+                options.getCustomHeaders() ) )
+            .options( options )
             .build();
     }
 
-    private static String completionsPathFor( String apiUrl )
-    {
-        if ( apiUrl != null && apiUrl.toLowerCase().contains( "deepseek" ) )
-        {
-            return "/chat/completions";
-        }
-        return "/v1/chat/completions";
-    }
-
     /**
-     * {@link OpenAiApi} always appends {@code completionsPath} to {@code baseUrl}.
+     * {@link OpenAiSetup} configures the official OpenAI Java SDK base URL.
      * Descriptors often store the full path for legacy HTTP clients.
      */
     private static String toBaseUrl( String apiUrl )

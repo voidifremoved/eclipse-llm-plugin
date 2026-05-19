@@ -1,0 +1,35 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: OkHttp (workspace, with Okio and Kotlin)
+Bundle-SymbolicName: wrapped.com.squareup.okhttp3.okhttp
+Bundle-Version: 4.12.1.qualifier
+Bundle-Vendor: Wojciech Gradkowski
+Bundle-ClassPath: lib/okhttp-4.12.0.jar,
+ lib/okio-jvm-3.6.0.jar,
+ lib/kotlin-osgi-bundle-1.8.21.jar
+Bundle-RequiredExecutionEnvironment: JavaSE-21
+Export-Package: okhttp3;version="4.12.0",
+ okhttp3.internal;version="4.12.0",
+ okhttp3.internal.authenticator;version="4.12.0",
+ okhttp3.internal.cache;version="4.12.0",
+ okhttp3.internal.cache2;version="4.12.0",
+ okhttp3.internal.concurrent;version="4.12.0",
+ okhttp3.internal.connection;version="4.12.0",
+ okhttp3.internal.http;version="4.12.0",
+ okhttp3.internal.http1;version="4.12.0",
+ okhttp3.internal.http2;version="4.12.0",
+ okhttp3.internal.io;version="4.12.0",
+ okhttp3.internal.platform;version="4.12.0",
+ okhttp3.internal.platform.android;version="4.12.0",
+ okhttp3.internal.proxy;version="4.12.0",
+ okhttp3.internal.publicsuffix;version="4.12.0",
+ okhttp3.internal.tls;version="4.12.0",
+ okhttp3.internal.ws;version="4.12.0",
+ okio;version="3.6.0",
+ okio.internal;version="3.6.0"
+Import-Package: !kotlin.*,
+ org.conscrypt;resolution:=optional,
+ org.bouncycastle.jsse;resolution:=optional,
+ org.bouncycastle.tls;resolution:=optional,
+ org.openjsse.javax.net.ssl;resolution:=optional,
+ org.openjsse.net.ssl;resolution:=optional
