@@ -163,6 +163,8 @@ public class SdkHttpStreamingTest
                 .serverInfo("calculator-server", "1.0.0")
                 .capabilities(capabilities)
                 .jsonMapper(jsonMapperSupplier.get())
+                .jsonSchemaValidator(new JacksonJsonSchemaValidatorSupplier().get())
+                .validateToolInputs(false)
                 .tools(syncToolSpecification)
                 .build();
         

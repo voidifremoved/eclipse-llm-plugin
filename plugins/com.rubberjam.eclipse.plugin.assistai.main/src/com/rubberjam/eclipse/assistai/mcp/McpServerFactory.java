@@ -193,6 +193,7 @@ public class McpServerFactory
                         .tools( toolSpecifications )
                         .jsonMapper( new JacksonMcpJsonMapperSupplier().get() )
                         .jsonSchemaValidator( new JacksonJsonSchemaValidatorSupplier().get() )
+                        .validateToolInputs( true )
                         .build();
     }
 
@@ -214,6 +215,7 @@ public class McpServerFactory
                 .tools( toolSpecifications )
                 .jsonMapper( new JacksonMcpJsonMapperSupplier().get() )
                 .jsonSchemaValidator( new JacksonJsonSchemaValidatorSupplier().get() )
+                .validateToolInputs( true )
                 .build();
     }
 

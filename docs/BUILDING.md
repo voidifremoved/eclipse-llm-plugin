@@ -3,8 +3,9 @@
 ## Prerequisites
 
 - Java 21.
-- Maven 3.9.x until the Maven wrapper is generated and committed.
 - Network access to Maven Central and `https://download.eclipse.org/releases/2026-03/`.
+
+Builds use the **Maven Wrapper** (`mvnw` / `mvnw.cmd`, Maven 3.9.9). A system Maven install is optional.
 
 ## Modules
 
@@ -18,10 +19,22 @@
 
 ## Standard Build
 
-On Windows PowerShell:
+On Windows PowerShell (uses `mvnw.cmd` via `scripts/build.ps1`):
 
 ```powershell
 .\scripts\build.ps1
+```
+
+Or invoke the wrapper directly from the repository root:
+
+```powershell
+.\mvnw.cmd clean verify
+```
+
+On Linux/macOS:
+
+```bash
+./mvnw clean verify
 ```
 
 To skip tests during dependency or target-platform work:
@@ -54,7 +67,7 @@ If Tycho or Maven cached a failed repository lookup:
 
 ## Known Local Certificate Failure
 
-A local build currently fails on this machine before compilation with a PKIX certificate error while accessing Maven Central or the Eclipse release repository. Fix the Java truststore or corporate proxy certificate before generating the Maven wrapper or expecting target resolution to complete.
+If the build fails before compilation with a PKIX certificate error while accessing Maven Central or the Eclipse release repository, fix the Java truststore or corporate proxy certificate.
 
 Typical symptoms:
 
@@ -62,16 +75,10 @@ Typical symptoms:
 PKIX path building failed: unable to find valid certification path to requested target
 ```
 
-After fixing the truststore, generate the Maven wrapper from the repository root:
+The first `./mvnw` run downloads Maven 3.9.9 using the URL in `.mvn/wrapper/maven-wrapper.properties`. Regenerate the wrapper only when upgrading Maven:
 
 ```powershell
-mvn -N wrapper:wrapper
-```
-
-Then use:
-
-```powershell
-.\mvnw.cmd clean verify
+mvn -N wrapper:wrapper -Dmaven=3.9.9
 ```
 
 ## Local update site output
@@ -84,7 +91,7 @@ In Eclipse: *Help → Install New Software → Add → Local…* and select that
 
 ## Install smoke test (local p2)
 
-After `mvn clean verify` (or `.\scripts\build.ps1`):
+After `.\mvnw.cmd clean verify` (or `.\scripts\build.ps1`):
 
 1. Open a fresh Eclipse SDK 2026-03 (or your dev product) with no prior AssistAI install.
 2. *Help → Install New Software → Add → Local…* → `releng/com.rubberjam.eclipse.assistai.repository/target/repository`.
@@ -95,7 +102,7 @@ After `mvn clean verify` (or `.\scripts\build.ps1`):
 To capture wrapped Maven bundle symbolic names from a build log:
 
 ```powershell
-mvn -DskipTests package 2>&1 | Tee-Object build.log
+.\mvnw.cmd -DskipTests package 2>&1 | Tee-Object build.log
 .\scripts\list-wrapped-bundles.ps1 build.log
 ```
 

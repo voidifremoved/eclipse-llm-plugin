@@ -8,13 +8,13 @@ Make the Eclipse plugin build and dependency model boring, repeatable, and easie
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 1 Build reproducibility | **Mostly complete** | Scripts, `.mvn/`, `BUILDING.md`, CI `tycho.localArtifacts=ignore`. Maven wrapper pending (needs cert fix to generate). |
+| 1 Build reproducibility | **Complete** | Maven Wrapper 3.9.9, `.mvn/`, scripts, `BUILDING.md`, CI uses `./mvnw` with `tycho.localArtifacts=ignore`. |
 | 2 Separate source from output | **Complete** | `site/` jars gitignored/removed; CI deploys from `releng/.../target/repository`. |
 | 3 Centralise versions | **Mostly complete** | Parent POM properties + `docs/DEPENDENCIES.md`. Kept `includeDependencyDepth=direct` with explicit 2nd-level roots; `list-wrapped-bundles.ps1` added. |
 | 4 Isolate Spring AI | **Complete** | `springai` package: factory, registry, providers, `MessageAdapter`, `McpToolBridge`, `AgentChatEngine`/`AgentChatSession`. Agent UI uses `AgentSession` facade + `AgentStreamChunk` only. MCP SDK 2.0.0-M2 aligned with Spring AI. |
 | 5 Provider migration | **Mostly complete** | Agent chat and code completion on Spring AI. Legacy `*StreamJavaHttpClient` stack and `ChatViewPresenter` removed. |
 | 6 Own OSGi metadata | **Started** | OkHttp owned wrapper; `scripts/inventory-p2-repository.ps1` + `docs/OSGI_BUNDLES.md`. |
-| 7 Repository verification | **Mostly complete** | Feature-only `category.xml` + `includeAllDependencies`. Full `mvn clean verify` passes. Install steps documented in `BUILDING.md`. |
+| 7 Repository verification | **Mostly complete** | Feature-only `category.xml` + `includeAllDependencies`. Full `./mvnw clean verify` passes. Install steps documented in `BUILDING.md`. |
 
 ---
 
@@ -26,8 +26,8 @@ Make the Eclipse plugin build and dependency model boring, repeatable, and easie
 - [x] Add Windows-friendly scripts (`scripts/build.ps1`, `resolve-target.ps1`, `clean-tycho-cache.ps1`)
 - [x] Document Java 21 and certificate/truststore troubleshooting (`docs/BUILDING.md`)
 - [x] CI uses `-Dtycho.localArtifacts=ignore`
-- [ ] Add Maven wrapper files (`mvnw` / `mvnw.cmd`) — blocked until Maven Central trust is fixed locally
-- [ ] Update CI to use the wrapper once committed
+- [x] Add Maven wrapper files (`mvnw` / `mvnw.cmd`, `.mvn/wrapper/maven-wrapper.properties`)
+- [x] CI uses `./mvnw` instead of system `mvn`
 
 ### Phase 2: Separate Source from Build Output
 
@@ -87,7 +87,6 @@ See `docs/DEPENDENCIES.md` for how to add dependencies.
 
 ## Immediate next work
 
-1. Generate Maven wrapper when local PKIX/trust is fixed; switch CI to `mvnw`.
-2. Add integration tests for Spring AI completion with MCP tool filtering.
+1. Add integration tests for Spring AI completion with MCP tool filtering.
 3. Phase 6: run `inventory-p2-repository.ps1` on release builds; decide owned wrappers for Tomcat / MCP JSON.
 4. Phase 4: thin `AgentSession` behind SPI; optional `assistai.core` bundle for separate Spring AI plugin.
