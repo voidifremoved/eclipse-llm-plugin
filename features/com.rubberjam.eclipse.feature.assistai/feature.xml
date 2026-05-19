@@ -28,7 +28,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
          id="com.rubberjam.eclipse.plugin.assistai.main"
          version="0.0.0"/>
    <plugin
-         id="com.rubberjam.eclipse.assistai.osgi.okhttp"
+         id="wrapped.com.squareup.okhttp3.okhttp"
          version="0.0.0"/>
 
 </feature>

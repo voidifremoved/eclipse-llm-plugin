@@ -4,3 +4,7 @@ bin/
 **/bin/
 *.class
 **/target/
+/site/artifacts.jar
+/site/content.jar
+/site/features/
+/site/plugins/
