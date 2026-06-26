@@ -44,7 +44,10 @@ public final class OpenAiCompatibleChatModelProvider implements ChatModelProvide
                 options.getTimeout(),
                 options.getMaxRetries(),
                 options.getProxy(),
-                options.getCustomHeaders() ) )
+                options.getCustomHeaders(),
+                null,
+                null,
+                java.util.Collections.emptyList() ) )
             .options( options )
             .build();
     }

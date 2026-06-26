@@ -202,13 +202,13 @@
 				<dependency>
 					<groupId>org.springframework.ai</groupId>
 					<artifactId>spring-ai-retry</artifactId>
-					<version>2.0.0-M6</version>
+					<version>2.0.0</version>
 					<type>jar</type>
 				</dependency>
 				<dependency>
 					<groupId>org.springframework.ai</groupId>
 					<artifactId>spring-ai-template-st</artifactId>
-					<version>2.0.0-M6</version>
+					<version>2.0.0</version>
 					<type>jar</type>
 				</dependency>
 				<dependency>
@@ -253,7 +253,7 @@
 					<version>1.17.0-RC1</version>
 					<type>jar</type>
 				</dependency>
-				<!-- MCP 2.0 required by Spring AI 2.0.0-M6 (Tool.inputSchema).
+				<!-- MCP 2.0 required by Spring AI 2.0 (Tool.inputSchema).
 				     mcp-json-jackson2 is embedded on main Bundle-Classpath — do not wrap as a target bundle. -->
 				<dependency>
 					<groupId>io.modelcontextprotocol.sdk</groupId>
@@ -392,25 +392,25 @@
 				<dependency>
 					<groupId>org.springframework.ai</groupId>
 					<artifactId>spring-ai-model</artifactId>
-					<version>2.0.0-M6</version>
+					<version>2.0.0</version>
 					<type>jar</type>
 				</dependency>
 				<dependency>
 					<groupId>org.springframework.ai</groupId>
 					<artifactId>spring-ai-client-chat</artifactId>
-					<version>2.0.0-M6</version>
+					<version>2.0.0</version>
 					<type>jar</type>
 				</dependency>
 				<dependency>
 					<groupId>org.springframework.ai</groupId>
 					<artifactId>spring-ai-commons</artifactId>
-					<version>2.0.0-M6</version>
+					<version>2.0.0</version>
 					<type>jar</type>
 				</dependency>
 				<dependency>
 					<groupId>org.springframework.ai</groupId>
 					<artifactId>spring-ai-openai</artifactId>
-					<version>2.0.0-M6</version>
+					<version>2.0.0</version>
 					<type>jar</type>
 					<exclusions>
 						<exclusion>
@@ -498,7 +498,7 @@
 				<dependency>
 					<groupId>org.springframework.ai</groupId>
 					<artifactId>spring-ai-anthropic</artifactId>
-					<version>2.0.0-M6</version>
+					<version>2.0.0</version>
 					<type>jar</type>
 					<exclusions>
 						<exclusion>
@@ -514,7 +514,7 @@
 				<dependency>
 					<groupId>org.springframework.ai</groupId>
 					<artifactId>spring-ai-google-genai</artifactId>
-					<version>2.0.0-M6</version>
+					<version>2.0.0</version>
 					<type>jar</type>
 					<exclusions>
 						<exclusion>
@@ -546,7 +546,7 @@
 				<dependency>
 					<groupId>org.springframework.ai</groupId>
 					<artifactId>spring-ai-mcp</artifactId>
-					<version>2.0.0-M6</version>
+					<version>2.0.0</version>
 					<type>jar</type>
 					<exclusions>
 						<exclusion>

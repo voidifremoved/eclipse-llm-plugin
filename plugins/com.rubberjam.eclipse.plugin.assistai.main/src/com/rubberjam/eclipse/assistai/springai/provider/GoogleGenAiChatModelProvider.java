@@ -31,7 +31,7 @@ public final class GoogleGenAiChatModelProvider implements ChatModelProvider
 
         return GoogleGenAiChatModel.builder()
             .genAiClient( client )
-            .defaultOptions( optionsBuilder.build() )
+            .options( optionsBuilder.build() )
             .build();
     }
 }

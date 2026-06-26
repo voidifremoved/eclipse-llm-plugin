@@ -11,8 +11,9 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.model.ModelOptionsUtils;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rubberjam.eclipse.assistai.chat.Attachment;
 import com.rubberjam.eclipse.assistai.chat.Attachment.FileContentAttachment;
 import com.rubberjam.eclipse.assistai.chat.Attachment.ImageAttachment;
@@ -21,6 +22,7 @@ import com.rubberjam.eclipse.assistai.chat.FunctionCall;
 
 public class MessageAdapter
 {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     public static Message toSpringAi( ChatMessage chatMessage )
     {
@@ -107,9 +109,18 @@ public class MessageAdapter
         {
             return new AssistantMessage( content );
         }
-        String argsJson = functionCall.arguments() == null
-                ? "{}"
-                : ModelOptionsUtils.toJsonString( functionCall.arguments() );
+        String argsJson = "{}";
+        if ( functionCall.arguments() != null )
+        {
+            try
+            {
+                argsJson = OBJECT_MAPPER.writeValueAsString( functionCall.arguments() );
+            }
+            catch ( Exception e )
+            {
+                // ignore
+            }
+        }
         AssistantMessage.ToolCall toolCall = new AssistantMessage.ToolCall(
                 functionCall.id(),
                 "function",
@@ -145,7 +156,15 @@ public class MessageAdapter
             if ( toolCalls != null && !toolCalls.isEmpty() )
             {
                 AssistantMessage.ToolCall firstCall = toolCalls.get( 0 );
-                Map<String, Object> args = ModelOptionsUtils.jsonToMap( firstCall.arguments() );
+                Map<String, Object> args = Collections.emptyMap();
+                try
+                {
+                    args = OBJECT_MAPPER.readValue( firstCall.arguments(), new TypeReference<Map<String, Object>>(){} );
+                }
+                catch ( Exception e )
+                {
+                    // ignore
+                }
                 FunctionCall funcCall = new FunctionCall(
                         firstCall.id(),
                         firstCall.name(),
