@@ -30,6 +30,8 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.e4.core.di.annotations.Creatable;
 import com.rubberjam.eclipse.assistai.tools.UISynchronizeCallable;
 import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.core.IField;
+import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.IPackageFragment;
@@ -1655,6 +1657,303 @@ public class CodeEditingService
             result.append("All package declarations and references have been updated.");
             
             return result.toString();
+        } 
+        catch (CoreException e) 
+        {
+            throw new RuntimeException("Error during refactoring: " + ExceptionUtils.getRootCauseMessage(e), e);
+        }
+    }
+
+    /**
+     * Renames a Java field using Eclipse's refactoring mechanism.
+     * 
+     * @param projectName The name of the project containing the Java file
+     * @param filePath The path to the Java file relative to the project root
+     * @param oldFieldName The current name of the field
+     * @param newFieldName The new name for the field
+     * @return A status message indicating success
+     */
+    public String refactorRenameJavaField(String projectName, String filePath, String oldFieldName, String newFieldName)
+    {
+        Objects.requireNonNull(projectName);
+        Objects.requireNonNull(filePath);
+        Objects.requireNonNull(oldFieldName);
+        Objects.requireNonNull(newFieldName);
+        
+        if (projectName.isEmpty()) 
+        {
+            throw new IllegalArgumentException("Error: Project name cannot be empty.");
+        }
+        if (filePath.isEmpty()) 
+        {
+            throw new IllegalArgumentException("Error: File path cannot be empty.");
+        }
+        if (oldFieldName.isEmpty()) 
+        {
+            throw new IllegalArgumentException("Error: Old field name cannot be empty.");
+        }
+        if (newFieldName.isEmpty()) 
+        {
+            throw new IllegalArgumentException("Error: New field name cannot be empty.");
+        }
+        
+        try 
+        {
+            IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
+            IProject project = root.getProject(projectName);
+            
+            if (!project.exists()) 
+            {
+                throw new RuntimeException("Error: Project '" + projectName + "' does not exist.");
+            }
+            if (!project.isOpen()) 
+            {
+                throw new RuntimeException("Error: Project '" + projectName + "' is closed.");
+            }
+            
+            IJavaProject javaProject = JavaCore.create(project);
+            if (javaProject == null || !javaProject.exists())
+            {
+                throw new RuntimeException("Error: Project '" + projectName + "' is not a Java project.");
+            }
+            
+            IPath path = IPath.fromPath(Path.of(filePath));
+            IFile file = project.getFile(path);
+            
+            if (!file.exists()) 
+            {
+                throw new RuntimeException("Error: File '" + filePath + "' does not exist in project '" + projectName + "'.");
+            }
+            
+            IJavaElement javaElement = JavaCore.create(file);
+            if (!(javaElement instanceof ICompilationUnit))
+            {
+                throw new RuntimeException("Error: Could not resolve Java compilation unit for file '" + filePath + "'.");
+            }
+            
+            ICompilationUnit compilationUnit = (ICompilationUnit) javaElement;
+            IType primaryType = compilationUnit.findPrimaryType();
+            if (primaryType == null)
+            {
+                throw new RuntimeException("Error: Could not find primary type in file '" + filePath + "'.");
+            }
+            
+            IField field = primaryType.getField(oldFieldName);
+            if (field == null || !field.exists())
+            {
+                throw new RuntimeException("Error: Field '" + oldFieldName + "' not found in type '" + primaryType.getElementName() + "'.");
+            }
+            
+            // Close the editor if the file is open (to avoid conflicts)
+            sync.syncExec(() -> 
+            {
+                IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
+                if (page != null) 
+                {
+                    IEditorPart editor = page.findEditor(new org.eclipse.ui.part.FileEditorInput(file));
+                    if (editor != null) 
+                    {
+                        page.closeEditor(editor, true); // save before closing
+                    }
+                }
+            });
+            
+            // Create the rename refactoring descriptor
+            RefactoringContribution contribution = RefactoringCore.getRefactoringContribution(IJavaRefactorings.RENAME_FIELD);
+            RenameJavaElementDescriptor descriptor = (RenameJavaElementDescriptor) contribution.createDescriptor();
+            
+            descriptor.setJavaElement(field);
+            descriptor.setNewName(newFieldName);
+            descriptor.setUpdateReferences(true);
+            descriptor.setUpdateTextualOccurrences(false);
+            
+            // Create and validate the refactoring
+            RefactoringStatus status = new RefactoringStatus();
+            Refactoring refactoring = descriptor.createRefactoring(status);
+            
+            if (status.hasFatalError())
+            {
+                throw new RuntimeException("Error creating refactoring: " + status.getMessageMatchingSeverity(RefactoringStatus.FATAL));
+            }
+            
+            IProgressMonitor monitor = new NullProgressMonitor();
+            RefactoringStatus checkStatus = refactoring.checkInitialConditions(monitor);
+            if (checkStatus.hasFatalError())
+            {
+                throw new RuntimeException("Error in initial conditions: " + checkStatus.getMessageMatchingSeverity(RefactoringStatus.FATAL));
+            }
+            
+            checkStatus = refactoring.checkFinalConditions(monitor);
+            if (checkStatus.hasFatalError())
+            {
+                throw new RuntimeException("Error in final conditions: " + checkStatus.getMessageMatchingSeverity(RefactoringStatus.FATAL));
+            }
+            
+            Change change = refactoring.createChange(monitor);
+            change.perform(monitor);
+            
+            project.refreshLocal(IResource.DEPTH_INFINITE, monitor);
+            
+            sync.asyncExec(() -> {
+                if (file.exists())
+                {
+                    safeOpenEditor(file);
+                }
+            });
+            
+            return "Success: Java field '" + oldFieldName + "' renamed to '" + newFieldName + "' in " + filePath + ". All references updated.";
+        } 
+        catch (CoreException e) 
+        {
+            throw new RuntimeException("Error during refactoring: " + ExceptionUtils.getRootCauseMessage(e), e);
+        }
+    }
+
+    /**
+     * Renames a Java method using Eclipse's refactoring mechanism.
+     * 
+     * @param projectName The name of the project containing the Java file
+     * @param filePath The path to the Java file relative to the project root
+     * @param oldMethodName The current name of the method
+     * @param newMethodName The new name for the method
+     * @return A status message indicating success
+     */
+    public String refactorRenameJavaMethod(String projectName, String filePath, String oldMethodName, String newMethodName)
+    {
+        Objects.requireNonNull(projectName);
+        Objects.requireNonNull(filePath);
+        Objects.requireNonNull(oldMethodName);
+        Objects.requireNonNull(newMethodName);
+        
+        if (projectName.isEmpty()) 
+        {
+            throw new IllegalArgumentException("Error: Project name cannot be empty.");
+        }
+        if (filePath.isEmpty()) 
+        {
+            throw new IllegalArgumentException("Error: File path cannot be empty.");
+        }
+        if (oldMethodName.isEmpty()) 
+        {
+            throw new IllegalArgumentException("Error: Old method name cannot be empty.");
+        }
+        if (newMethodName.isEmpty()) 
+        {
+            throw new IllegalArgumentException("Error: New method name cannot be empty.");
+        }
+        
+        try 
+        {
+            IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
+            IProject project = root.getProject(projectName);
+            
+            if (!project.exists()) 
+            {
+                throw new RuntimeException("Error: Project '" + projectName + "' does not exist.");
+            }
+            if (!project.isOpen()) 
+            {
+                throw new RuntimeException("Error: Project '" + projectName + "' is closed.");
+            }
+            
+            IJavaProject javaProject = JavaCore.create(project);
+            if (javaProject == null || !javaProject.exists())
+            {
+                throw new RuntimeException("Error: Project '" + projectName + "' is not a Java project.");
+            }
+            
+            IPath path = IPath.fromPath(Path.of(filePath));
+            IFile file = project.getFile(path);
+            
+            if (!file.exists()) 
+            {
+                throw new RuntimeException("Error: File '" + filePath + "' does not exist in project '" + projectName + "'.");
+            }
+            
+            IJavaElement javaElement = JavaCore.create(file);
+            if (!(javaElement instanceof ICompilationUnit))
+            {
+                throw new RuntimeException("Error: Could not resolve Java compilation unit for file '" + filePath + "'.");
+            }
+            
+            ICompilationUnit compilationUnit = (ICompilationUnit) javaElement;
+            IType primaryType = compilationUnit.findPrimaryType();
+            if (primaryType == null)
+            {
+                throw new RuntimeException("Error: Could not find primary type in file '" + filePath + "'.");
+            }
+            
+            IMethod methodToRename = null;
+            for (IMethod method : primaryType.getMethods())
+            {
+                if (method.getElementName().equals(oldMethodName))
+                {
+                    methodToRename = method;
+                    break;
+                }
+            }
+            if (methodToRename == null)
+            {
+                throw new RuntimeException("Error: Method '" + oldMethodName + "' not found in type '" + primaryType.getElementName() + "'.");
+            }
+            
+            // Close the editor if the file is open (to avoid conflicts)
+            sync.syncExec(() -> 
+            {
+                IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
+                if (page != null) 
+                {
+                    IEditorPart editor = page.findEditor(new org.eclipse.ui.part.FileEditorInput(file));
+                    if (editor != null) 
+                    {
+                        page.closeEditor(editor, true); // save before closing
+                    }
+                }
+            });
+            
+            // Create the rename refactoring descriptor
+            RefactoringContribution contribution = RefactoringCore.getRefactoringContribution(IJavaRefactorings.RENAME_METHOD);
+            RenameJavaElementDescriptor descriptor = (RenameJavaElementDescriptor) contribution.createDescriptor();
+            
+            descriptor.setJavaElement(methodToRename);
+            descriptor.setNewName(newMethodName);
+            descriptor.setUpdateReferences(true);
+            
+            // Create and validate the refactoring
+            RefactoringStatus status = new RefactoringStatus();
+            Refactoring refactoring = descriptor.createRefactoring(status);
+            
+            if (status.hasFatalError())
+            {
+                throw new RuntimeException("Error creating refactoring: " + status.getMessageMatchingSeverity(RefactoringStatus.FATAL));
+            }
+            
+            IProgressMonitor monitor = new NullProgressMonitor();
+            RefactoringStatus checkStatus = refactoring.checkInitialConditions(monitor);
+            if (checkStatus.hasFatalError())
+            {
+                throw new RuntimeException("Error in initial conditions: " + checkStatus.getMessageMatchingSeverity(RefactoringStatus.FATAL));
+            }
+            
+            checkStatus = refactoring.checkFinalConditions(monitor);
+            if (checkStatus.hasFatalError())
+            {
+                throw new RuntimeException("Error in final conditions: " + checkStatus.getMessageMatchingSeverity(RefactoringStatus.FATAL));
+            }
+            
+            Change change = refactoring.createChange(monitor);
+            change.perform(monitor);
+            
+            project.refreshLocal(IResource.DEPTH_INFINITE, monitor);
+            
+            sync.asyncExec(() -> {
+                if (file.exists())
+                {
+                    safeOpenEditor(file);
+                }
+            });
+            
+            return "Success: Java method '" + oldMethodName + "' renamed to '" + newMethodName + "' in " + filePath + ". All references updated.";
         } 
         catch (CoreException e) 
         {

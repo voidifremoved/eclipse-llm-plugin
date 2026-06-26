@@ -45,7 +45,7 @@ public final class OpenAiCompatibleChatModelProvider implements ChatModelProvide
                 options.getMaxRetries(),
                 options.getProxy(),
                 options.getCustomHeaders(),
-                null,
+                io.micrometer.observation.ObservationRegistry.NOOP,
                 null,
                 java.util.Collections.emptyList() ) )
             .options( options )

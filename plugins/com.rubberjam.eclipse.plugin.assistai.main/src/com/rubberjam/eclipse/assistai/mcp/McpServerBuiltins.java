@@ -9,16 +9,8 @@ import java.util.stream.Stream;
 import org.eclipse.e4.core.di.annotations.Creatable;
 
 import com.rubberjam.eclipse.assistai.mcp.annotations.McpServer;
-import com.rubberjam.eclipse.assistai.mcp.servers.DuckDuckSearchMcpServer;
-import com.rubberjam.eclipse.assistai.mcp.servers.EclipseCodeEditingMcpServer;
-import com.rubberjam.eclipse.assistai.mcp.servers.EclipseContextMcpServer;
-import com.rubberjam.eclipse.assistai.mcp.servers.EclipseGitMcpServer;
-import com.rubberjam.eclipse.assistai.mcp.servers.PDEMcpServer;
-import com.rubberjam.eclipse.assistai.mcp.servers.EclipseIntegrationsMcpServer;
-import com.rubberjam.eclipse.assistai.mcp.servers.EclipseRunnerMcpServer;
+import com.rubberjam.eclipse.assistai.mcp.servers.EclipseMcpServer;
 import com.rubberjam.eclipse.assistai.mcp.servers.MemoryMcpServer;
-import com.rubberjam.eclipse.assistai.mcp.servers.ReadWebPageMcpServer;
-import com.rubberjam.eclipse.assistai.mcp.servers.TimeMcpServer;
 
 import jakarta.inject.Singleton;
 
@@ -28,16 +20,8 @@ class McpServerBuiltins
 {
     
     public static final Class<?>[] BUILT_IN_MCP_SERVERS = {
-            EclipseIntegrationsMcpServer.class,
-            DuckDuckSearchMcpServer.class,
-            TimeMcpServer.class,
-            ReadWebPageMcpServer.class,
-            MemoryMcpServer.class,
-            EclipseCodeEditingMcpServer.class,
-            EclipseRunnerMcpServer.class,
-            EclipseContextMcpServer.class,
-            EclipseGitMcpServer.class,
-            PDEMcpServer.class
+            EclipseMcpServer.class,
+            MemoryMcpServer.class
     };
     
     public List<McpServerDescriptor> listBuiltInImplementations()

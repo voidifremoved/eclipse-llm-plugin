@@ -447,6 +447,45 @@ public class MavenService
     }
 
     /**
+     * Updates the Maven project configuration (equivalent to Eclipse's Alt+F5 Update Project).
+     * 
+     * @param projectName The name of the Maven project to update
+     * @return A status message indicating success
+     */
+    public String updateMavenProject( String projectName )
+    {
+        Objects.requireNonNull( projectName, "Project name cannot be null" );
+        if ( projectName.isEmpty() )
+        {
+            throw new IllegalArgumentException( "Error: Project name cannot be empty." );
+        }
+
+        try
+        {
+            IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject( projectName );
+            if ( !project.exists() )
+            {
+                throw new RuntimeException( "Error: Project '" + projectName + "' does not exist." );
+            }
+            if ( !project.isOpen() )
+            {
+                throw new RuntimeException( "Error: Project '" + projectName + "' is closed." );
+            }
+            if ( !project.hasNature( IMavenConstants.NATURE_ID ) )
+            {
+                throw new RuntimeException( "Error: Project '" + projectName + "' is not a Maven project." );
+            }
+
+            MavenPlugin.getProjectConfigurationManager().updateProjectConfiguration( project, new NullProgressMonitor() );
+            return "Successfully updated Maven project configuration for '" + projectName + "'";
+        }
+        catch ( Exception e )
+        {
+            throw new RuntimeException( "Error updating Maven project configuration: " + e.getMessage(), e );
+        }
+    }
+
+    /**
      * Parses Maven goals from a space-separated string.
      */
     private List<String> parseGoals( String goals )
