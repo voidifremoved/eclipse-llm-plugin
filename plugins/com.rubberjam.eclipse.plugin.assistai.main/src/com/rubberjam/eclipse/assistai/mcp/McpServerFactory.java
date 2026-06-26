@@ -20,8 +20,8 @@ import org.osgi.framework.FrameworkUtil;
 import com.rubberjam.eclipse.assistai.mcp.annotations.ToolParam;
 import com.rubberjam.eclipse.assistai.tools.UISynchronizeCallable;
 
-import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapperSupplier;
-import io.modelcontextprotocol.json.schema.jackson2.JacksonJsonSchemaValidatorSupplier;
+import io.modelcontextprotocol.json.jackson3.JacksonMcpJsonMapperSupplier;
+import io.modelcontextprotocol.json.schema.jackson3.JacksonJsonSchemaValidatorSupplier;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification;

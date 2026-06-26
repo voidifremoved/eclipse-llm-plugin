@@ -27,9 +27,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.modelcontextprotocol.client.McpClient;
+import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
-import io.modelcontextprotocol.json.schema.jackson2.JacksonJsonSchemaValidatorSupplier;
-import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapperSupplier;
+import io.modelcontextprotocol.json.jackson3.JacksonMcpJsonMapperSupplier;
+import io.modelcontextprotocol.json.schema.jackson3.JacksonJsonSchemaValidatorSupplier;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServer;
@@ -102,14 +103,14 @@ public class SdkHttpStreamingTest
                     }
                     """;
         
-        var jsonMapperSupplier = new JacksonMcpJsonMapperSupplier();
-        var tool = McpSchema.Tool.builder()
+        JacksonMcpJsonMapperSupplier jsonMapperSupplier = new JacksonMcpJsonMapperSupplier();
+        McpSchema.Tool tool = McpSchema.Tool.builder()
                 .name("calculator")
                 .description("Basic calculator")
                 .inputSchema(jsonMapperSupplier.get(), schema)
                 .build();
         
-        var syncToolSpecification = McpServerFeatures.SyncToolSpecification.builder()
+        McpServerFeatures.SyncToolSpecification syncToolSpecification = McpServerFeatures.SyncToolSpecification.builder()
                 .tool(tool)
                 .callHandler((exchange, request) -> {
                     var a = request.arguments().get("a");
@@ -145,21 +146,21 @@ public class SdkHttpStreamingTest
                 })
                 .build();
         
-        var capabilities = McpSchema.ServerCapabilities.builder()
+        McpSchema.ServerCapabilities capabilities = McpSchema.ServerCapabilities.builder()
                 .prompts( false )
                 .resources( false, false )
                 .tools(true)
                 .logging()
                 .build();
         
-        var transportProvider = HttpServletStreamableServerTransportProvider.builder()
+        this.transportProvider = HttpServletStreamableServerTransportProvider.builder()
                 .jsonMapper(jsonMapperSupplier.get())
                 .keepAliveInterval(Duration.ofSeconds(10))
                 .mcpEndpoint(MCP_ENDPOINT)
                 .build();
         
         // Create MCP server
-        mcpServer = McpServer.sync(transportProvider)
+        mcpServer = McpServer.sync(this.transportProvider)
                 .serverInfo("calculator-server", "1.0.0")
                 .capabilities(capabilities)
                 .jsonMapper(jsonMapperSupplier.get())
@@ -174,7 +175,7 @@ public class SdkHttpStreamingTest
         org.apache.catalina.webresources.TomcatURLStreamHandlerFactory.disable();
         
         // Start Tomcat with the transport provider as servlet (with authentication and HTTPS if enabled)
-        tomcat = createTomcatServer("", PORT, transportProvider, true, USE_HTTPS);
+        tomcat = createTomcatServer("", PORT, this.transportProvider, true, USE_HTTPS);
         tomcat.start();
         assertTrue(tomcat.getServer().getState().isAvailable());
         String protocol = USE_HTTPS ? "https" : "http";
@@ -209,19 +210,19 @@ public class SdkHttpStreamingTest
                 })
                 .build();
         
-        var client = McpClient.sync(clientTransport)
+        McpSyncClient client = McpClient.sync(clientTransport)
                 .requestTimeout(Duration.ofSeconds(10))
                 .jsonSchemaValidator(new JacksonJsonSchemaValidatorSupplier().get())
                 .build();
         
         // Initialize the client
-        var initResult = client.initialize();
+        McpSchema.InitializeResult initResult = client.initialize();
         assertNotNull(initResult);
         assertNotNull(initResult.serverInfo());
         assertEquals("calculator-server", initResult.serverInfo().name());
         
         // List available tools
-        var toolsList = client.listTools();
+        McpSchema.ListToolsResult toolsList = client.listTools();
         assertNotNull(toolsList.tools());
         assertFalse(toolsList.tools().isEmpty());
         assertEquals(1, toolsList.tools().size());

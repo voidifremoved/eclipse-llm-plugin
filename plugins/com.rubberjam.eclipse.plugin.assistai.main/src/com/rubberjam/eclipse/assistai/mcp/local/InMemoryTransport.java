@@ -12,7 +12,7 @@ import org.eclipse.e4.core.di.annotations.Creatable;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.McpJsonMapperSupplier;
 import io.modelcontextprotocol.json.TypeRef;
-import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapperSupplier;
+import io.modelcontextprotocol.json.jackson3.JacksonMcpJsonMapperSupplier;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpServerSession;

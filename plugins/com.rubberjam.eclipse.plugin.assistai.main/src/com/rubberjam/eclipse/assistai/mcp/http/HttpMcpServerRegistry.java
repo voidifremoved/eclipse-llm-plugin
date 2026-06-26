@@ -19,7 +19,7 @@ import com.rubberjam.eclipse.assistai.mcp.McpServerDescriptor;
 import com.rubberjam.eclipse.assistai.mcp.McpServerFactory;
 import com.rubberjam.eclipse.assistai.mcp.McpServerRepository;
 
-import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapperSupplier;
+import io.modelcontextprotocol.json.jackson3.JacksonMcpJsonMapperSupplier;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.HttpServletStreamableServerTransportProvider;
 import jakarta.annotation.PostConstruct;
@@ -112,7 +112,10 @@ public class HttpMcpServerRegistry
                 var transportProvider = createStreamableHttpTransportProvider( updated.name() );
                 var server = mcpServerFactory.createSyncServer( implementation, transportProvider, updated.excludedTools() );
                 servers.add( server );
-                addServlet(context, updated.name(), transportProvider);  // Pass context and name
+                
+                // Wrap the transportProvider in a servlet that ensures the correct thread context classloader is active on Tomcat threads
+                Servlet wrappedServlet = new ClassLoaderWrapperServlet( transportProvider, HttpMcpServerRegistry.class.getClassLoader() );
+                addServlet(context, updated.name(), wrappedServlet);  // Pass context and name
             }
         }
     }
@@ -134,12 +137,11 @@ public class HttpMcpServerRegistry
 
     private HttpServletStreamableServerTransportProvider createStreamableHttpTransportProvider( String name )
     {
-        var transportProvider = HttpServletStreamableServerTransportProvider.builder()
+        return HttpServletStreamableServerTransportProvider.builder()
                 .jsonMapper(jsonMapperSupplier.get())
-//                .keepAliveInterval(Duration.ofSeconds(10))
+                .keepAliveInterval(java.time.Duration.ofSeconds(10))
                 .mcpEndpoint(MCP_ENDPOINT + "/" + name )
                 .build();
-        return transportProvider;
     }
     
     public List<String> listEndpoints()
@@ -166,7 +168,7 @@ public class HttpMcpServerRegistry
         tomcat.setBaseDir(baseDir);
 
         var connector = tomcat.getConnector();
-        connector.setAsyncTimeout(3000);
+        connector.setAsyncTimeout(1800000); // 30 minutes to prevent SSE streams from timing out too early
 
         return tomcat;
     }
@@ -237,5 +239,73 @@ public class HttpMcpServerRegistry
         }
     }
     
-    
+    private static class ClassLoaderWrapperServlet implements Servlet
+    {
+        private final Servlet delegate;
+        private final ClassLoader classLoader;
+
+        public ClassLoaderWrapperServlet( Servlet delegate, ClassLoader classLoader )
+        {
+            this.delegate = delegate;
+            this.classLoader = classLoader;
+        }
+
+        @Override
+        public void init( jakarta.servlet.ServletConfig config ) throws jakarta.servlet.ServletException
+        {
+            ClassLoader old = Thread.currentThread().getContextClassLoader();
+            Thread.currentThread().setContextClassLoader( classLoader );
+            try
+            {
+                delegate.init( config );
+            }
+            finally
+            {
+                Thread.currentThread().setContextClassLoader( old );
+            }
+        }
+
+        @Override
+        public jakarta.servlet.ServletConfig getServletConfig()
+        {
+            return delegate.getServletConfig();
+        }
+
+        @Override
+        public void service( jakarta.servlet.ServletRequest req, jakarta.servlet.ServletResponse res )
+                throws jakarta.servlet.ServletException, java.io.IOException
+        {
+            ClassLoader old = Thread.currentThread().getContextClassLoader();
+            Thread.currentThread().setContextClassLoader( classLoader );
+            try
+            {
+                delegate.service( req, res );
+            }
+            finally
+            {
+                Thread.currentThread().setContextClassLoader( old );
+            }
+        }
+
+        @Override
+        public String getServletInfo()
+        {
+            return delegate.getServletInfo();
+        }
+
+        @Override
+        public void destroy()
+        {
+            ClassLoader old = Thread.currentThread().getContextClassLoader();
+            Thread.currentThread().setContextClassLoader( classLoader );
+            try
+            {
+                delegate.destroy();
+            }
+            finally
+            {
+                Thread.currentThread().setContextClassLoader( old );
+            }
+        }
+    }
 }

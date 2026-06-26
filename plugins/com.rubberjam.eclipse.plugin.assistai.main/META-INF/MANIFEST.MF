@@ -49,7 +49,7 @@ Require-Bundle: org.eclipse.e4.ui.services,
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Automatic-Module-Name: assistai.main
 Bundle-Classpath: .,
- lib/mcp-json-jackson2-2.0.0-M2.jar,
+ lib/mcp-json-jackson3-2.0.0-M2.jar,
  lib/tomcat-embed-core-11.0.21.jar
 Bundle-ActivationPolicy: lazy
 Export-Package: com.rubberjam.eclipse.assistai,
@@ -82,6 +82,10 @@ Import-Package: com.fasterxml.jackson.core;version="[2.21.0,3.0.0)",
  com.fasterxml.jackson.databind;version="[2.21.0,3.0.0)",
  com.fasterxml.jackson.databind.node;version="[2.21.0,3.0.0)",
  com.fasterxml.jackson.databind.type;version="[2.21.0,3.0.0)",
+ tools.jackson.core;version="[3.0.0,4.0.0)",
+ tools.jackson.databind;version="[3.0.0,4.0.0)",
+ tools.jackson.databind.json;version="[3.0.0,4.0.0)",
+ tools.jackson.databind.type;version="[3.0.0,4.0.0)",
  com.google.common.base;version="[33.5.0,34.0.0)",
  com.google.common.collect,
  com.google.common.io,
