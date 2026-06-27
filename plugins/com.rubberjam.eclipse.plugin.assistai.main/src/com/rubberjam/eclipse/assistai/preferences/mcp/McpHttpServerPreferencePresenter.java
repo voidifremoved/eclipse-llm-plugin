@@ -55,10 +55,8 @@ public class McpHttpServerPreferencePresenter
         preferencesProvider.setEnabled(enabled);
 
         logger.info( "MCP Http server preferences updated" );
-        initializeView( view );
-
         httpServerRegistry.restart();
-
+        initializeView( view );
     }
 
     /**
@@ -100,8 +98,8 @@ public class McpHttpServerPreferencePresenter
      */
     public void onPerformDefaults()
     {
-        // Set default values
         preferencesProvider.resetToDefaults();
+        httpServerRegistry.restart();
         initializeView( view );
     }
 

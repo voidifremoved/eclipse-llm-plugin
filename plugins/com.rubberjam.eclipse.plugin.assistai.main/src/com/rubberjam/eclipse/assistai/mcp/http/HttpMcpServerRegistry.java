@@ -1,6 +1,7 @@
 package com.rubberjam.eclipse.assistai.mcp.http;
 
 
+import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,7 +11,11 @@ import java.util.stream.Collectors;
 import org.apache.catalina.Context;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.LifecycleState;
+import org.apache.catalina.connector.Connector;
+import org.apache.catalina.connector.Request;
+import org.apache.catalina.connector.Response;
 import org.apache.catalina.startup.Tomcat;
+import org.apache.catalina.valves.ValveBase;
 
 import org.eclipse.core.runtime.ILog;
 import org.eclipse.e4.core.di.annotations.Creatable;
@@ -27,6 +32,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import jakarta.servlet.Servlet;
+import jakarta.servlet.ServletException;
 
 @Creatable
 @Singleton
@@ -79,20 +85,8 @@ public class HttpMcpServerRegistry
     @PostWorkbenchClose
     public synchronized void handleShutdown()
     {
+        stopTomcatServer();
         closeMcpServersAndTransports();
-        if ( tomcat != null )
-        {
-            try
-            {
-                tomcat.stop();
-                tomcat.destroy();
-            }
-            catch ( LifecycleException e )
-            {
-                logger.error( "Tomcat server failed to stop: " + e.getMessage(), e );
-            }
-            tomcat = null;
-        }
     }
 
     @PostConstruct
@@ -186,35 +180,37 @@ public class HttpMcpServerRegistry
 
     public synchronized void restart()
     {
-        // Full teardown
+        stopTomcatServer();
         closeMcpServersAndTransports();
-
-        if ( tomcat != null )
-        {
-            try
-            {
-                logger.info( "Stopping MCP Http Server." );
-                tomcat.stop();
-                tomcat.destroy();
-            }
-            catch ( LifecycleException e )
-            {
-                logger.error( "Error stopping Tomcat server: " + e.getMessage(), e );
-            }
-            tomcat = null;
-        }
 
         if ( !httpServerPreferncesProvider.isEnabled() )
         {
+            logger.info( "MCP Http Server is disabled; not starting." );
             return;
         }
 
-        // Full rebuild
+        // Tomcat spawns its acceptor/poller/worker threads during start(); those threads
+        // inherit the thread-context classloader of the calling thread (here the Eclipse UI
+        // thread). Inside Equinox that classloader cannot drive Tomcat's request machinery,
+        // which leaves connections accepted but never answered. Pin the TCCL to this bundle's
+        // classloader for the whole start so the worker threads inherit a usable loader.
+        Thread currentThread = Thread.currentThread();
+        ClassLoader previousTccl = currentThread.getContextClassLoader();
+        ClassLoader pluginClassLoader = HttpMcpServerRegistry.class.getClassLoader();
+        currentThread.setContextClassLoader( pluginClassLoader );
+
+        logger.info( "MCP Http Server: starting with thread-context classloader " + pluginClassLoader
+                + " (previous=" + previousTccl + ")" );
+
         try
         {
             tomcat = createTomcatServer();
             String baseDir = System.getProperty( "java.io.tmpdir" );
             Context context = tomcat.addContext( "", baseDir );
+
+            // First valve in the pipeline: logs every request that reaches the context so we
+            // can tell whether requests are arriving at all, and on which classloader.
+            context.getPipeline().addValve( new RequestLoggingValve( logger ) );
 
             var builtin = mcpServerRepository.listBuiltInServers();
             var stored = mcpServerRepository.listStoredServers();
@@ -234,24 +230,71 @@ public class HttpMcpServerRegistry
 
             logger.info( "Starting MCP Http Server." );
             tomcat.start();
-            logger.info( "MCP Http Server state: " + tomcat.getServer().getState() + " @" + tomcat.getServer().getAddress() + ":" + tomcat.getServer().getPort() );
+            logger.info( "MCP Http Server state: " + tomcat.getServer().getState()
+                    + " connector=" + describeConnector() );
             logger.info( "MCP Http Server endpoints:\n " + listEndpoints().stream().collect( Collectors.joining( "\n" ) ) );
         }
         catch ( LifecycleException e )
         {
             logger.error( "Error starting MCP Http Server: " + e.getMessage(), e );
+            stopTomcatServer();
             closeMcpServersAndTransports();
-            if ( tomcat != null )
+        }
+        finally
+        {
+            currentThread.setContextClassLoader( previousTccl );
+        }
+    }
+
+    private String describeConnector()
+    {
+        if ( tomcat == null )
+        {
+            return "<none>";
+        }
+        Connector connector = tomcat.getConnector();
+        if ( connector == null )
+        {
+            return "<none>";
+        }
+        return connector.getScheme() + "://" + httpServerPreferncesProvider.get().hostname() + ":" + connector.getPort()
+                + " state=" + connector.getState();
+    }
+
+    private void stopTomcatServer()
+    {
+        if ( tomcat == null )
+        {
+            return;
+        }
+
+        Tomcat stoppingTomcat = tomcat;
+        tomcat = null;
+
+        try
+        {
+            logger.info( "Stopping MCP Http Server." );
+            Connector connector = stoppingTomcat.getConnector();
+            if ( connector != null )
             {
-                try
-                {
-                    tomcat.destroy();
-                }
-                catch ( LifecycleException destroyError )
-                {
-                    logger.error( "Error destroying failed Tomcat server: " + destroyError.getMessage(), destroyError );
-                }
-                tomcat = null;
+                connector.pause();
+                connector.stop();
+            }
+            stoppingTomcat.stop();
+        }
+        catch ( LifecycleException e )
+        {
+            logger.error( "Error stopping Tomcat server: " + e.getMessage(), e );
+        }
+        finally
+        {
+            try
+            {
+                stoppingTomcat.destroy();
+            }
+            catch ( LifecycleException e )
+            {
+                logger.error( "Error destroying Tomcat server: " + e.getMessage(), e );
             }
         }
     }
@@ -286,6 +329,44 @@ public class HttpMcpServerRegistry
         endpoints.clear();
     }
     
+    /**
+     * Diagnostic valve placed first in the context pipeline. It records every request that
+     * reaches the context, the classloader of the processing thread, and the resulting status
+     * and duration so that connector/classloader stalls can be told apart from servlet errors.
+     */
+    private static class RequestLoggingValve extends ValveBase
+    {
+        private final ILog logger;
+
+        RequestLoggingValve( ILog logger )
+        {
+            super( true );
+            this.logger = logger;
+        }
+
+        @Override
+        public void invoke( Request request, Response response ) throws IOException, ServletException
+        {
+            long start = System.currentTimeMillis();
+            String method = request.getMethod();
+            String uri = request.getRequestURI();
+            try
+            {
+                getNext().invoke( request, response );
+            }
+            catch ( IOException | ServletException | RuntimeException | Error e )
+            {
+                logger.error( "[MCP Http] " + method + " " + uri + " failed: " + e, e );
+                throw e;
+            }
+            finally
+            {
+                logger.info( "[MCP Http] " + method + " " + uri + " -> " + response.getStatus()
+                        + " (" + ( System.currentTimeMillis() - start ) + "ms)" );
+            }
+        }
+    }
+
     private static class ClassLoaderWrapperServlet implements Servlet
     {
         private final Servlet delegate;
