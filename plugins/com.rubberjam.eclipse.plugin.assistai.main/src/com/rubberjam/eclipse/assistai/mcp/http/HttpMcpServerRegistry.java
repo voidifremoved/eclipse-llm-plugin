@@ -1,6 +1,7 @@
 package com.rubberjam.eclipse.assistai.mcp.http;
 
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -33,6 +34,8 @@ public class HttpMcpServerRegistry
 {
     
     private static String MCP_ENDPOINT = "/mcp";
+
+    private static final Duration TRANSPORT_SHUTDOWN_TIMEOUT = Duration.ofSeconds( 10 );
     
     private final HttpMcpServerPreferencesProvider httpServerPreferncesProvider;
     private final McpServerRepository mcpServerRepository;
@@ -40,6 +43,7 @@ public class HttpMcpServerRegistry
     private final ILog logger;
     
     private final List<McpSyncServer> servers;
+    private final List<HttpServletStreamableServerTransportProvider> transportProviders;
     private final ArrayList<String> endpoints;
 
     private Tomcat tomcat;
@@ -63,6 +67,7 @@ public class HttpMcpServerRegistry
         this.logger = logger;
         
         this.servers = new ArrayList<>();
+        this.transportProviders = new ArrayList<>();
         this.endpoints = new ArrayList<>();
         this.jsonMapperSupplier = new JacksonMcpJsonMapperSupplier();
 
@@ -72,9 +77,9 @@ public class HttpMcpServerRegistry
      * Handles the shutdown process by closing all MCP clients gracefully.
      */
     @PostWorkbenchClose
-    public void handleShutdown()
+    public synchronized void handleShutdown()
     {
-        servers.forEach( McpSyncServer::closeGracefully );
+        closeMcpServersAndTransports();
         if ( tomcat != null )
         {
             try
@@ -111,6 +116,7 @@ public class HttpMcpServerRegistry
                 var implementation = mcpServerRepository.makeImplementation( updated.name() );
                 var transportProvider = createStreamableHttpTransportProvider( updated.name() );
                 var server = mcpServerFactory.createSyncServer( implementation, transportProvider, updated.excludedTools() );
+                transportProviders.add( transportProvider );
                 servers.add( server );
                 
                 // Wrap the transportProvider in a servlet that ensures the correct thread context classloader is active on Tomcat threads
@@ -144,7 +150,7 @@ public class HttpMcpServerRegistry
                 .build();
     }
     
-    public List<String> listEndpoints()
+    public synchronized List<String> listEndpoints()
     {
         var config = httpServerPreferncesProvider.get();
         String baseUrl = "http://" + config.hostname() + ":" + config.port();
@@ -173,17 +179,15 @@ public class HttpMcpServerRegistry
         return tomcat;
     }
 
-    public boolean isRunning()
+    public synchronized boolean isRunning()
     {
         return tomcat != null && LifecycleState.STARTED.equals( tomcat.getServer().getState() );
     }
 
-    public void restart()
+    public synchronized void restart()
     {
         // Full teardown
-        servers.forEach( McpSyncServer::closeGracefully );
-        servers.clear();
-        endpoints.clear();
+        closeMcpServersAndTransports();
 
         if ( tomcat != null )
         {
@@ -236,7 +240,50 @@ public class HttpMcpServerRegistry
         catch ( LifecycleException e )
         {
             logger.error( "Error starting MCP Http Server: " + e.getMessage(), e );
+            closeMcpServersAndTransports();
+            if ( tomcat != null )
+            {
+                try
+                {
+                    tomcat.destroy();
+                }
+                catch ( LifecycleException destroyError )
+                {
+                    logger.error( "Error destroying failed Tomcat server: " + destroyError.getMessage(), destroyError );
+                }
+                tomcat = null;
+            }
         }
+    }
+
+    private void closeMcpServersAndTransports()
+    {
+        for ( McpSyncServer server : servers )
+        {
+            try
+            {
+                server.closeGracefully();
+            }
+            catch ( RuntimeException e )
+            {
+                logger.error( "Error closing MCP server: " + e.getMessage(), e );
+            }
+        }
+        servers.clear();
+
+        for ( HttpServletStreamableServerTransportProvider transportProvider : transportProviders )
+        {
+            try
+            {
+                transportProvider.closeGracefully().block( TRANSPORT_SHUTDOWN_TIMEOUT );
+            }
+            catch ( RuntimeException e )
+            {
+                logger.error( "Error closing MCP HTTP transport provider: " + e.getMessage(), e );
+            }
+        }
+        transportProviders.clear();
+        endpoints.clear();
     }
     
     private static class ClassLoaderWrapperServlet implements Servlet

@@ -1,6 +1,7 @@
 package com.rubberjam.eclipse.assistai.mcp;
 
 import java.lang.reflect.Method;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -9,6 +10,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.exception.ExceptionUtils;
@@ -36,6 +40,8 @@ import jakarta.inject.Inject;
 @Creatable
 public class McpServerFactory
 {
+    private static final Duration TOOL_CALL_TIMEOUT = Duration.ofMinutes( 5 );
+
     private final ILog logger;
 
     private final UISynchronizeCallable uiSync;
@@ -85,10 +91,30 @@ public class McpServerFactory
      */
     private CallToolResult executeCallTool( ToolExecutor executor, Tool tool, Map<String, Object> args )
     {
+        var call = executor.call( tool.name(), args );
         try
         {
-            var result = executor.call( tool.name(), args ).get();
+            var result = call.get( TOOL_CALL_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS );
             return createTextCallToolResult( result );
+        }
+        catch ( TimeoutException e )
+        {
+            call.cancel( true );
+            String message = "MCP tool call timed out after " + TOOL_CALL_TIMEOUT.toSeconds() + " seconds: " + tool.name();
+            logger.error( message, e );
+            return createErrorResult( new RuntimeException( message, e ) );
+        }
+        catch ( InterruptedException e )
+        {
+            call.cancel( true );
+            Thread.currentThread().interrupt();
+            logger.error( e.getMessage(), e );
+            return createErrorResult( e );
+        }
+        catch ( ExecutionException e )
+        {
+            logger.error( e.getMessage(), e );
+            return createErrorResult( e );
         }
         catch ( Exception e )
         {

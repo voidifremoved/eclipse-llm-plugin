@@ -1,5 +1,7 @@
 package com.rubberjam.eclipse.assistai.mcp.local;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -22,6 +24,8 @@ final class McpTransportExecutor
     private final ExecutorService reactorExecutor;
 
     private final AtomicInteger ioThreadCounter = new AtomicInteger();
+
+    private final List<Thread> ioThreads = new ArrayList<>();
 
     private volatile boolean shutdown;
 
@@ -46,9 +50,18 @@ final class McpTransportExecutor
      */
     void startBlockingIoLoop( Runnable loop )
     {
-        int n = ioThreadCounter.incrementAndGet();
-        Thread thread = new Thread( loop, "assistai-mcp-io-" + transportId + "-" + n );
-        thread.setDaemon( true );
+        Thread thread;
+        synchronized ( ioThreads )
+        {
+            if ( shutdown )
+            {
+                return;
+            }
+            int n = ioThreadCounter.incrementAndGet();
+            thread = new Thread( loop, "assistai-mcp-io-" + transportId + "-" + n );
+            thread.setDaemon( true );
+            ioThreads.add( thread );
+        }
         thread.start();
     }
 
@@ -58,7 +71,19 @@ final class McpTransportExecutor
         {
             return;
         }
-        shutdown = true;
+        synchronized ( ioThreads )
+        {
+            if ( shutdown )
+            {
+                return;
+            }
+            shutdown = true;
+            for ( Thread thread : ioThreads )
+            {
+                thread.interrupt();
+            }
+            ioThreads.clear();
+        }
         reactorExecutor.shutdownNow();
     }
 }

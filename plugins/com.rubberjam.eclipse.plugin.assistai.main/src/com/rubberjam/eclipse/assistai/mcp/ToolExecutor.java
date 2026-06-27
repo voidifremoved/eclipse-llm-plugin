@@ -9,6 +9,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 
 import com.rubberjam.eclipse.assistai.Activator;
@@ -21,6 +25,19 @@ import com.rubberjam.eclipse.assistai.tools.UISynchronizeCallable;
  */
 public class ToolExecutor
 {
+    private static final AtomicInteger TOOL_THREAD_COUNTER = new AtomicInteger();
+
+    private static final ExecutorService TOOL_EXECUTOR = Executors.newCachedThreadPool( new ThreadFactory()
+    {
+        @Override
+        public Thread newThread( Runnable runnable )
+        {
+            Thread thread = new Thread( runnable, "assistai-mcp-tool-" + TOOL_THREAD_COUNTER.incrementAndGet() );
+            thread.setDaemon( true );
+            return thread;
+        }
+    } );
+
     private final Object functions;
 
     private final UISynchronizeCallable uiSync;
@@ -53,10 +70,22 @@ public class ToolExecutor
 
     public CompletableFuture<Object> call( String name, Map<String, Object> args )
     {
-        Method method = getFunctionCallbackByName( name ).orElseThrow( () -> new RuntimeException( "Tool " + name + " not found!" ) );
-        Object[] argValues = mapArguments( method, args );
-        Object result = uiSync.syncCall( () -> invokeMethod( method, argValues ) );
-        return CompletableFuture.completedFuture( result );
+        ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
+        return CompletableFuture.supplyAsync( () -> {
+            Thread thread = Thread.currentThread();
+            ClassLoader oldClassLoader = thread.getContextClassLoader();
+            thread.setContextClassLoader( contextClassLoader );
+            try
+            {
+                Method method = getFunctionCallbackByName( name ).orElseThrow( () -> new RuntimeException( "Tool " + name + " not found!" ) );
+                Object[] argValues = mapArguments( method, args );
+                return uiSync.syncCall( () -> invokeMethod( method, argValues ) );
+            }
+            finally
+            {
+                thread.setContextClassLoader( oldClassLoader );
+            }
+        }, TOOL_EXECUTOR );
     }
 
     private Object invokeMethod( Method method, Object[] args )
