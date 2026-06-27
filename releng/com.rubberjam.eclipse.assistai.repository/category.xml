@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<site>
+  <category-def name="assistai" label="AssistAI"/>
+
+  <feature url="features/com.rubberjam.eclipse.assistai_1.0.7.qualifier.jar"
+           id="com.rubberjam.eclipse.assistai"
+           version="0.0.0">
+    <category name="assistai"/>
+  </feature>
+</site>

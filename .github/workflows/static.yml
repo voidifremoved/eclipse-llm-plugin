@@ -35,7 +35,9 @@ jobs:
           echo "DISPLAY=:99" >> $GITHUB_ENV
 
       - name: Build with Tycho
-        run: mvn --batch-mode --no-transfer-progress clean verify
+        run: |
+          chmod +x mvnw
+          ./mvnw --batch-mode "-Dtycho.localArtifacts=ignore" clean verify
 
       - name: Upload test logs on failure
         if: failure()
@@ -51,12 +53,12 @@ jobs:
       - name: Prepare Eclipse Update Site
         run: |
           mkdir -p deploy
-          cp -r releng/com.github.gradusnikov.eclipse.assistai.repository/target/repository/. deploy/
+          cp -r releng/com.rubberjam.eclipse.assistai.repository/target/repository/. deploy/
           cp site/index.html deploy/
           cp site/site.xml deploy/
           cp -r site/web deploy/ || true
           # Replace version qualifier placeholder with the actual resolved version
-          FEATURE_VERSION=$(basename deploy/features/com.github.gradusnikov.eclipse.assistai_*.jar .jar | sed 's/com.github.gradusnikov.eclipse.assistai_//')
+          FEATURE_VERSION=$(basename deploy/features/com.rubberjam.eclipse.assistai_*.jar .jar | sed 's/com.rubberjam.eclipse.assistai_//')
           sed -i -E "s/[0-9]+\.[0-9]+\.[0-9]+\.qualifier/$FEATURE_VERSION/g" deploy/site.xml
 
       - name: Upload artifact

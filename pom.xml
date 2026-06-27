@@ -4,17 +4,18 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>com.github.gradusnikov.eclipse</groupId>
+  <groupId>com.rubberjam.eclipse</groupId>
   <artifactId>assistai-parent</artifactId>
   <version>1.0.7-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <modules>
-    <module>releng/com.github.gradusnikov.eclipse.assistai.target</module>
-    <module>plugins/com.github.gradusnikov.eclipse.plugin.assistai.main</module>
-    <module>features/com.github.gradusnikov.eclipse.feature.assistai</module>
-    <module>tests/com.github.gradusnikov.eclipse.plugin.assistai.main.tests</module>
-    <module>releng/com.github.gradusnikov.eclipse.assistai.repository</module>
+    <module>releng/com.rubberjam.eclipse.assistai.target</module>
+    <module>plugins/com.rubberjam.eclipse.plugin.assistai.main</module>
+    <module>plugins/com.rubberjam.eclipse.assistai.osgi.okhttp</module>
+    <module>features/com.rubberjam.eclipse.feature.assistai</module>
+    <module>tests/com.rubberjam.eclipse.plugin.assistai.main.tests</module>
+    <module>releng/com.rubberjam.eclipse.assistai.repository</module>
   </modules>
 
   <properties>
@@ -22,6 +23,16 @@
     <maven.compiler.source>21</maven.compiler.source>
     <maven.compiler.target>21</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Third-party versions (source of truth for .target maintenance; see docs/DEPENDENCIES.md) -->
+    <jackson2.version>2.21.3</jackson2.version>
+    <jackson3.version>3.1.2</jackson3.version>
+    <spring-framework.version>7.0.7</spring-framework.version>
+    <spring-ai.version>2.0.0</spring-ai.version>
+    <mcp-sdk.version>2.0.0-M2</mcp-sdk.version>
+    <reactor.version>3.8.5</reactor.version>
+    <okhttp.version>4.12.0</okhttp.version>
+    <tomcat-embed.version>11.0.21</tomcat-embed.version>
+    <eclipse.release>2026-03</eclipse.release>
   </properties>
 
   <build>
@@ -42,8 +53,8 @@
         <configuration>
           <target>
             <artifact>
-              <groupId>com.github.gradusnikov.eclipse</groupId>
-              <artifactId>com.github.gradusnikov.eclipse.assistai.target</artifactId>
+              <groupId>com.rubberjam.eclipse</groupId>
+              <artifactId>com.rubberjam.eclipse.assistai.target</artifactId>
               <version>1.0.7-SNAPSHOT</version>
             </artifact>
           </target>
@@ -74,6 +85,14 @@
               <arch>aarch64</arch>
             </environment>
           </environments>
+          <filters>
+            <!-- kotlin-osgi-bundle is the sole kotlin.* provider; drop Tycho-wrapped stdlib duplicates -->
+            <filter>
+              <type>eclipse-plugin</type>
+              <id>wrapped.org.jetbrains.kotlin.kotlin-stdlib-jdk8</id>
+              <removeAll />
+            </filter>
+          </filters>
         </configuration>
       </plugin>
 
@@ -97,9 +116,6 @@
         <groupId>org.eclipse.tycho</groupId>
         <artifactId>tycho-compiler-plugin</artifactId>
         <version>${tycho.version}</version>
-        <configuration>
-          <useJDK>BREE</useJDK>
-        </configuration>
       </plugin>
     </plugins>
   </build>

@@ -2,7 +2,7 @@
 name: eclipse-analyze
 description: Analyze Java code using Eclipse JDT tools — type hierarchy, find references, call hierarchy, compilation errors, quick fixes, and import suggestions. Use this to understand code structure before making changes.
 argument-hint: [class or element to analyze]
-allowed-tools: mcp__eclipse-ide__getClassOutline, mcp__eclipse-ide__getMethodSource, mcp__eclipse-ide__getFilteredSource, mcp__eclipse-ide__getTypeHierarchy, mcp__eclipse-ide__findReferences, mcp__eclipse-ide__getMethodCallHierarchy, mcp__eclipse-ide__getCompilationErrors, mcp__eclipse-ide__getQuickFixes, mcp__eclipse-ide__getImportSuggestions, mcp__eclipse-ide__getJavaDoc, mcp__eclipse-ide__getSource, mcp__eclipse-ide__getProjectLayout, mcp__eclipse-ide__getProjectProperties, mcp__eclipse-ide__readProjectResource, mcp__eclipse-ide__listProjects, mcp__eclipse-ide__getCurrentlyOpenedFile, mcp__eclipse-ide__getEditorSelection, mcp__eclipse-ide__fileSearch, mcp__eclipse-ide__fileSearchRegExp, mcp__eclipse-ide__findFiles, mcp__eclipse-ide__getProjectDependencies
+allowed-tools: mcp__eclipse-ide__getClassOutline, mcp__eclipse-ide__getMethodSource, mcp__eclipse-ide__getFilteredSource, mcp__eclipse-ide__getTypeHierarchy, mcp__eclipse-ide__findReferences, mcp__eclipse-ide__getMethodCallHierarchy, mcp__eclipse-ide__getCompilationErrors, mcp__eclipse-ide__executeQuickFix, mcp__eclipse-ide__getImportSuggestions, mcp__eclipse-ide__getJavaDoc, mcp__eclipse-ide__getSource, mcp__eclipse-ide__getProjectLayout, mcp__eclipse-ide__getProjectProperties, mcp__eclipse-ide__readProjectResource, mcp__eclipse-ide__listProjects, mcp__eclipse-ide__getCurrentlyOpenedFile, mcp__eclipse-ide__getEditorSelection, mcp__eclipse-ide__fileSearch, mcp__eclipse-ide__fileSearchRegExp, mcp__eclipse-ide__findFiles, mcp__eclipse-ide__getProjectDependencies
 ---
 
 # Eclipse Code Analysis
@@ -42,8 +42,8 @@ These tools are designed to minimize context window usage. Follow the **outline-
 
 ## Error Analysis
 
-- **getCompilationErrors** — Get all compilation errors/warnings. Filter by `projectName` and `severity` (ERROR, WARNING, ALL).
-- **getQuickFixes** — Get available quick fixes for errors in a file. Optionally filter by `lineNumber`.
+- **getCompilationErrors** — Get all compilation errors/warnings (includes quick-fix proposals with marker IDs and indices). Filter by `projectName` and `severity` (ERROR, WARNING, ALL).
+- **executeQuickFix** — Apply a quick fix from `getCompilationErrors` output using `markerId` and `proposalIndex`.
 - **getImportSuggestions** — Find import candidates for unresolved types.
 
 ## Project Navigation
@@ -70,4 +70,4 @@ These tools are designed to minimize context window usage. Follow the **outline-
 2. Outline: `getClassOutline` to understand class structure
 3. Focus: `getMethodSource` to read specific methods, or `getFilteredSource` for full-but-collapsed view
 4. Analyze: `getTypeHierarchy`, `findReferences`, `getMethodCallHierarchy` as needed
-5. After edits: `getCompilationErrors` to verify, then `getQuickFixes` or `getImportSuggestions` to resolve
+5. After edits: `getCompilationErrors` to verify; use `executeQuickFix` or `getImportSuggestions` to resolve remaining issues

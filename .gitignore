@@ -1,6 +1,13 @@
+# Release bundle inventories (generated locally)
+docs/inventory/*.txt
+
 /@dot
 /exports
 bin/
 **/bin/
 *.class
 **/target/
+/site/artifacts.jar
+/site/content.jar
+/site/features/
+/site/plugins/

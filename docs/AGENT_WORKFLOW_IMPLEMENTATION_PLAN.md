@@ -138,7 +138,7 @@ Add Spring AI JARs to the Tycho Maven target location in the `.target` file. The
 - Spring AI 2.0.0-M4 depends on Reactor (already in target), Jackson (already in target), and SLF4J (already in target)
 - Must evaluate transitive dependencies for OSGi bundle compatibility — some may need `missingManifest="generate"` in the target
 
-**Files changed:** `releng/com.github.gradusnikov.eclipse.assistai.target/com.github.gradusnikov.eclipse.assistai.target`
+**Files changed:** `releng/com.rubberjam.eclipse.assistai.target/com.rubberjam.eclipse.assistai.target`
 
 #### Step 1.2 — Update MANIFEST.MF imports
 
@@ -162,7 +162,7 @@ org.springframework.ai.tool
 
 #### Step 1.3 — Verify OSGi resolution
 
-Run `mvn clean verify -pl plugins/com.github.gradusnikov.eclipse.plugin.assistai.main` to verify all bundles resolve. Address any missing transitive dependencies by adding them to the target platform.
+Run `mvn clean verify -pl plugins/com.rubberjam.eclipse.plugin.assistai.main` to verify all bundles resolve. Address any missing transitive dependencies by adding them to the target platform.
 
 **Risk:** Spring AI JARs are not OSGi bundles natively. The Tycho Maven target `missingManifest="generate"` setting will auto-generate bundle manifests, but some dependencies (e.g., Spring Framework core, Spring Retry) may pull in a large transitive graph. This step may require iteration.
 
@@ -692,7 +692,7 @@ Test the full agent loop with a mock `ChatModel` that returns tool calls and the
 All new classes go in a new `agent` package:
 
 ```
-src/com/github/gradusnikov/eclipse/assistai/
+src/com.rubberjam/eclipse/assistai/
 ├── agent/
 │   ├── ChatModelFactory.java          — Creates Spring AI ChatModel from ModelApiDescriptor
 │   ├── ChatModelRegistry.java         — Caches ChatModel instances by UID
