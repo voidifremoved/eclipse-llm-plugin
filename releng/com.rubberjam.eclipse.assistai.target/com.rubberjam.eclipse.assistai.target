@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <?pde version="3.8"?>
-<target name="AssistAI Target Platform" sequenceNumber="32">
+<target name="AssistAI Target Platform" sequenceNumber="34">
 	<locations>
 
 		<!-- Eclipse 2026-03 (4.39) release train — single planner location.
@@ -47,7 +47,7 @@
 					<type>jar</type>
 				</dependency>
 				<!-- Jackson 3 + NetworkNT 3: required by Spring AI 2.x and MCP SDK mcp-json-jackson3.
-				     json-schema-validator 2.x removed — duplicate com.networknt.schema provider with 3.x. -->
+				     json-schema-validator 2.x removed — duplicate com.networknt.schema provider with 3.x.
 				     Target includeDependencyDepth=direct only pulls one Maven level from listed roots,
 				     so jackson-core / micrometer-commons must be declared explicitly. -->
 				<dependency>

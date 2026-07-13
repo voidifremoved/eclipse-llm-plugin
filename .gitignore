@@ -11,3 +11,4 @@ bin/
 /site/content.jar
 /site/features/
 /site/plugins/
+/.DS_Store

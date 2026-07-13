@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lifecycleMappingMetadata>
+  <lifecycleMappingFilters>
+    <lifecycleMappingFilter>
+      <symbolicName>org.eclipse.m2e.pde.connector</symbolicName>
+      <versionRange>[2.2.0,)</versionRange>
+      <packagingTypes>
+        <packagingType>eclipse-plugin</packagingType>
+        <packagingType>eclipse-test-plugin</packagingType>
+        <packagingType>eclipse-feature</packagingType>
+        <packagingType>eclipse-target-definition</packagingType>
+        <packagingType>eclipse-repository</packagingType>
+      </packagingTypes>
+    </lifecycleMappingFilter>
+  </lifecycleMappingFilters>
+</lifecycleMappingMetadata>
