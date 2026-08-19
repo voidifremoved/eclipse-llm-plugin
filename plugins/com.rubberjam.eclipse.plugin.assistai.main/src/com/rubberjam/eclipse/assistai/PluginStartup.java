@@ -6,9 +6,6 @@ import org.eclipse.ui.IStartup;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
 
-import com.rubberjam.eclipse.assistai.mcp.http.HttpMcpServerRegistry;
-import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRegistry;
-
 public class PluginStartup implements IStartup
 {
     @Override
@@ -25,8 +22,7 @@ public class PluginStartup implements IStartup
             if (window != null) {
                 ILog logger = Activator.getDefault().getLog();
                 logger.info( "Initializing MCP services (background)" );
-                Activator.getDefault().make( HttpMcpServerRegistry.class );
-                Activator.getDefault().make( InMemoryMcpClientRegistry.class ).ensureInitialized();
+                Activator.getDefault().startMcpServices();
             } else {
                 // Window exists but not active yet, retry
                 Display.getDefault().timerExec(500, this::waitForWorkbench);

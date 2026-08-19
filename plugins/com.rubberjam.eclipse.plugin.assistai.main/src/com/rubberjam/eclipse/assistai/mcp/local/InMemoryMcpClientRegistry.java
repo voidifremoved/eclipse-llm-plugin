@@ -91,10 +91,14 @@ public class InMemoryMcpClientRegistry
      * Handles the shutdown process by closing all MCP clients gracefully.
      */
     @PostWorkbenchClose
-    public void handleShutdown()
+    public synchronized void handleShutdown()
     {
         clients.values().forEach( McpSyncClient::closeGracefully );
+        clients.clear();
         servers.forEach( McpSyncServer::closeGracefully );
+        servers.clear();
+        initialized = false;
+        initFuture = null;
     }
 
     /**
@@ -362,10 +366,6 @@ public class InMemoryMcpClientRegistry
     public void restart()
     {
         handleShutdown();
-        clients.clear();
-        servers.clear();
-        initialized = false;
-        initFuture = null;
         if ( builtinToolRouter != null )
         {
             builtinToolRouter.clearCache();

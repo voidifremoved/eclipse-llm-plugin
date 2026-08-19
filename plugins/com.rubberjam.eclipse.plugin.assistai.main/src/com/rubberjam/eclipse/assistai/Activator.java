@@ -4,6 +4,7 @@ import org.eclipse.e4.core.contexts.ContextInjectionFactory;
 import org.eclipse.e4.core.contexts.EclipseContextFactory;
 import org.eclipse.e4.core.contexts.IEclipseContext;
 import org.eclipse.ui.IWorkbench;
+import org.eclipse.ui.IWorkbenchListener;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.plugin.AbstractUIPlugin;
@@ -14,6 +15,8 @@ import io.micrometer.context.ContextRegistry;
 import reactor.util.context.ReactorContextAccessor;
 
 import com.rubberjam.eclipse.assistai.models.ModelApiDescriptorRepository;
+import com.rubberjam.eclipse.assistai.mcp.http.HttpMcpServerRegistry;
+import com.rubberjam.eclipse.assistai.mcp.local.InMemoryMcpClientRegistry;
 import com.rubberjam.eclipse.assistai.preferences.mcp.McpHttpServerPreferencePresenter;
 import com.rubberjam.eclipse.assistai.preferences.mcp.McpServerPreferencePresenter;
 import com.rubberjam.eclipse.assistai.preferences.models.ModelListPreferencePresenter;
@@ -23,12 +26,98 @@ public class Activator extends AbstractUIPlugin
 {
     private static Activator plugin = null;
 
+    private HttpMcpServerRegistry httpMcpServerRegistry;
+
+    private InMemoryMcpClientRegistry inMemoryMcpClientRegistry;
+
+    private IWorkbenchListener mcpWorkbenchListener;
+
     @Override
     public void start(BundleContext context) throws Exception
     {
         super.start(context);
         plugin = this;
         registerReactorContextAccessor();
+    }
+
+    @Override
+    public void stop(BundleContext context) throws Exception
+    {
+        try
+        {
+            stopMcpServices();
+        }
+        finally
+        {
+            plugin = null;
+            super.stop( context );
+        }
+    }
+
+    /**
+     * Starts the MCP services and ties their lifetime to the workbench. Releasing the HTTP port
+     * in {@link IWorkbenchListener#preShutdown(IWorkbench, boolean)} ensures it is available when
+     * Eclipse starts the replacement workbench during a workspace switch.
+     */
+    public synchronized void startMcpServices()
+    {
+        if ( httpMcpServerRegistry != null )
+        {
+            return;
+        }
+
+        IWorkbench workbench = PlatformUI.getWorkbench();
+        try
+        {
+            httpMcpServerRegistry = make( HttpMcpServerRegistry.class );
+            inMemoryMcpClientRegistry = make( InMemoryMcpClientRegistry.class );
+            inMemoryMcpClientRegistry.ensureInitialized();
+
+            mcpWorkbenchListener = new IWorkbenchListener()
+            {
+                @Override
+                public boolean preShutdown( IWorkbench shuttingDownWorkbench, boolean forced )
+                {
+                    stopMcpServices();
+                    return true;
+                }
+
+                @Override
+                public void postShutdown( IWorkbench shutDownWorkbench )
+                {
+                }
+            };
+            workbench.addWorkbenchListener( mcpWorkbenchListener );
+        }
+        catch ( RuntimeException | Error e )
+        {
+            stopMcpServices();
+            throw e;
+        }
+    }
+
+    private synchronized void stopMcpServices()
+    {
+        IWorkbenchListener listener = mcpWorkbenchListener;
+        mcpWorkbenchListener = null;
+        if ( listener != null && PlatformUI.isWorkbenchRunning() )
+        {
+            PlatformUI.getWorkbench().removeWorkbenchListener( listener );
+        }
+
+        HttpMcpServerRegistry serverRegistry = httpMcpServerRegistry;
+        httpMcpServerRegistry = null;
+        if ( serverRegistry != null )
+        {
+            serverRegistry.handleShutdown();
+        }
+
+        InMemoryMcpClientRegistry clientRegistry = inMemoryMcpClientRegistry;
+        inMemoryMcpClientRegistry = null;
+        if ( clientRegistry != null )
+        {
+            clientRegistry.handleShutdown();
+        }
     }
 
     /**
