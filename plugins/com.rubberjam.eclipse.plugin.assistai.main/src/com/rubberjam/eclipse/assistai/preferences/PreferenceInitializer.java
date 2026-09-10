@@ -3,9 +3,7 @@ package com.rubberjam.eclipse.assistai.preferences;
 import org.eclipse.core.runtime.preferences.AbstractPreferenceInitializer;
 import org.eclipse.e4.core.di.annotations.Creatable;
 import org.eclipse.jface.preference.IPreferenceStore;
-import org.eclipse.jface.preference.IPersistentPreferenceStore;
 
-import java.util.UUID;
 
 import com.rubberjam.eclipse.assistai.Activator;
 import com.rubberjam.eclipse.assistai.mcp.McpServerRepository;
@@ -63,20 +61,7 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer
         store.setDefault(PreferenceConstants.ASSISTAI_MCP_HTTP_HOSTNAME, "localhost");
         store.setDefault(PreferenceConstants.ASSISTAI_MCP_HTTP_PORT, 27417);
         store.setDefault(PreferenceConstants.ASSISTAI_MCP_HTTP_ENABLED, true);
-        // Generate auth token once and persist it — using setDefault(randomUUID) would
-        // produce a new token on every Eclipse restart since defaults are not persisted.
-        if ( store.getString(PreferenceConstants.ASSISTAI_MCP_HTTP_AUTH_TOKEN).isBlank() )
-        {
-            store.setValue(PreferenceConstants.ASSISTAI_MCP_HTTP_AUTH_TOKEN, UUID.randomUUID().toString());
-            if (store instanceof IPersistentPreferenceStore persistentStore)
-            {
-                try {
-                    persistentStore.save();
-                } catch (java.io.IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
+        // HTTP credentials are migrated/generated in installation-scoped preferences.
 
         // Initialize Code Completion defaults
         store.setDefault(PreferenceConstants.ASSISTAI_COMPLETION_ENABLED, true);

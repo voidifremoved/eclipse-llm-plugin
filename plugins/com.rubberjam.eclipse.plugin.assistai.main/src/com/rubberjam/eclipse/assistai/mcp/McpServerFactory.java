@@ -192,8 +192,8 @@ public class McpServerFactory
                     inputSchema.put( "required", required );
                 }
                 McpSchema.Tool tool = new McpSchema.Tool(
-                        toolAnnotation.name(),
-                        toolAnnotation.name(),
+                        ToolExecutor.toFunctionName( method ),
+                        ToolExecutor.toFunctionName( method ),
                         toolAnnotation.description(),
                         inputSchema,
                         null,

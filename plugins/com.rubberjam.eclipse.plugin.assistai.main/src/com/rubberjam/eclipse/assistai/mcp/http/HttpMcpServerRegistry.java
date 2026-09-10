@@ -2,6 +2,11 @@ package com.rubberjam.eclipse.assistai.mcp.http;
 
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
+
+import org.eclipse.core.runtime.jobs.Job;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -53,6 +58,19 @@ public class HttpMcpServerRegistry
     private final ArrayList<String> endpoints;
 
     private Tomcat tomcat;
+    private Path baseDirectory;
+    private boolean shuttingDown;
+    private int retryAttempt;
+    private String lastFailure;
+    private final Job recoveryJob = Job.create( "Start AssistAI MCP HTTP server", monitor -> {
+        synchronized ( this )
+        {
+            if ( !shuttingDown && !monitor.isCanceled() && !isRunning() )
+            {
+                restart();
+            }
+        }
+    } );
 
     private JacksonMcpJsonMapperSupplier jsonMapperSupplier;
 
@@ -85,6 +103,8 @@ public class HttpMcpServerRegistry
     @PostWorkbenchClose
     public synchronized void handleShutdown()
     {
+        shuttingDown = true;
+        recoveryJob.cancel();
         stopTomcatServer();
         closeMcpServersAndTransports();
     }
@@ -93,7 +113,8 @@ public class HttpMcpServerRegistry
     public void init()
     {
         logger.info( "Initializing MCP Http Server." );
-        restart();
+        recoveryJob.setSystem( true );
+        recoveryJob.schedule();
     }
     
     private void initializeBuiltInServers(Context context, List<McpServerDescriptor> stored, List<McpServerDescriptor> builtin )
@@ -109,8 +130,8 @@ public class HttpMcpServerRegistry
             {
                 var implementation = mcpServerRepository.makeImplementation( updated.name() );
                 var transportProvider = createStreamableHttpTransportProvider( updated.name() );
-                var server = mcpServerFactory.createSyncServer( implementation, transportProvider, updated.excludedTools() );
                 transportProviders.add( transportProvider );
+                var server = mcpServerFactory.createSyncServer( implementation, transportProvider, updated.excludedTools() );
                 servers.add( server );
                 
                 // Wrap the transportProvider in a servlet that ensures the correct thread context classloader is active on Tomcat threads
@@ -155,7 +176,7 @@ public class HttpMcpServerRegistry
     }
 
     
-    private Tomcat createTomcatServer()
+    private Tomcat createTomcatServer() throws IOException
     {
         // Disable Tomcat's URL stream handler factory to avoid conflicts with OSGi
         System.setProperty("tomcat.util.buf.StringCache.byte.enabled", "true");
@@ -164,10 +185,12 @@ public class HttpMcpServerRegistry
         tomcat.setPort(httpServerPreferncesProvider.get().port());
         tomcat.setHostname(httpServerPreferncesProvider.get().hostname());
         
-        String baseDir = System.getProperty("java.io.tmpdir");
-        tomcat.setBaseDir(baseDir);
+        baseDirectory = Files.createTempDirectory( "assistai-mcp-" );
+        tomcat.setBaseDir(baseDirectory.toString());
 
         var connector = tomcat.getConnector();
+        connector.setProperty( "address", httpServerPreferncesProvider.get().hostname() );
+        connector.setThrowOnFailure( true );
         connector.setAsyncTimeout(1800000); // 30 minutes to prevent SSE streams from timing out too early
 
         return tomcat;
@@ -175,11 +198,23 @@ public class HttpMcpServerRegistry
 
     public synchronized boolean isRunning()
     {
-        return tomcat != null && LifecycleState.STARTED.equals( tomcat.getServer().getState() );
+        return tomcat != null && LifecycleState.STARTED.equals( tomcat.getServer().getState() )
+                && LifecycleState.STARTED.equals( tomcat.getConnector().getState() );
+    }
+
+    public synchronized String getLastFailure()
+    {
+        return lastFailure;
     }
 
     public synchronized void restart()
     {
+        if ( shuttingDown )
+        {
+            return;
+        }
+        recoveryJob.cancel();
+        lastFailure = null;
         stopTomcatServer();
         closeMcpServersAndTransports();
 
@@ -205,12 +240,15 @@ public class HttpMcpServerRegistry
         try
         {
             tomcat = createTomcatServer();
-            String baseDir = System.getProperty( "java.io.tmpdir" );
+            String baseDir = baseDirectory.toString();
             Context context = tomcat.addContext( "", baseDir );
 
             // First valve in the pipeline: logs every request that reaches the context so we
             // can tell whether requests are arriving at all, and on which classloader.
-            context.getPipeline().addValve( new RequestLoggingValve( logger ) );
+            if ( Boolean.getBoolean( "assistai.mcp.traceHttp" ) )
+            {
+                context.getPipeline().addValve( new RequestLoggingValve( logger ) );
+            }
 
             var builtin = mcpServerRepository.listBuiltInServers();
             var stored = mcpServerRepository.listStoredServers();
@@ -230,15 +268,23 @@ public class HttpMcpServerRegistry
 
             logger.info( "Starting MCP Http Server." );
             tomcat.start();
+            if ( !isRunning() || !context.getState().isAvailable() )
+            {
+                throw new LifecycleException( "HTTP connector or servlet context did not start" );
+            }
+            retryAttempt = 0;
             logger.info( "MCP Http Server state: " + tomcat.getServer().getState()
                     + " connector=" + describeConnector() );
             logger.info( "MCP Http Server endpoints:\n " + listEndpoints().stream().collect( Collectors.joining( "\n" ) ) );
         }
-        catch ( LifecycleException e )
+        catch ( LifecycleException | IOException | RuntimeException | LinkageError e )
         {
+            lastFailure = e.toString();
             logger.error( "Error starting MCP Http Server: " + e.getMessage(), e );
             stopTomcatServer();
             closeMcpServersAndTransports();
+            long delay = Math.min( 30_000L, 1_000L << Math.min( retryAttempt++, 5 ) );
+            recoveryJob.schedule( delay );
         }
         finally
         {
@@ -305,7 +351,9 @@ public class HttpMcpServerRegistry
         {
             try
             {
-                server.closeGracefully();
+                server.getAsyncServer().closeGracefully()
+                        .subscribeOn( reactor.core.scheduler.Schedulers.boundedElastic() )
+                        .block( TRANSPORT_SHUTDOWN_TIMEOUT );
             }
             catch ( RuntimeException e )
             {
@@ -318,7 +366,9 @@ public class HttpMcpServerRegistry
         {
             try
             {
-                transportProvider.closeGracefully().block( TRANSPORT_SHUTDOWN_TIMEOUT );
+                transportProvider.closeGracefully()
+                        .subscribeOn( reactor.core.scheduler.Schedulers.boundedElastic() )
+                        .block( TRANSPORT_SHUTDOWN_TIMEOUT );
             }
             catch ( RuntimeException e )
             {
@@ -327,6 +377,21 @@ public class HttpMcpServerRegistry
         }
         transportProviders.clear();
         endpoints.clear();
+        if ( baseDirectory != null )
+        {
+            try ( var paths = Files.walk( baseDirectory ) )
+            {
+                for ( Path path : paths.sorted( Comparator.reverseOrder() ).toList() )
+                {
+                    Files.deleteIfExists( path );
+                }
+            }
+            catch ( IOException e )
+            {
+                logger.warn( "Could not remove MCP temporary directory: " + e.getMessage() );
+            }
+            baseDirectory = null;
+        }
     }
     
     /**
@@ -424,16 +489,19 @@ public class HttpMcpServerRegistry
         @Override
         public void destroy()
         {
-            ClassLoader old = Thread.currentThread().getContextClassLoader();
-            Thread.currentThread().setContextClassLoader( classLoader );
-            try
-            {
-                delegate.destroy();
-            }
-            finally
-            {
-                Thread.currentThread().setContextClassLoader( old );
-            }
+            reactor.core.publisher.Mono.fromRunnable( () -> {
+                ClassLoader old = Thread.currentThread().getContextClassLoader();
+                Thread.currentThread().setContextClassLoader( classLoader );
+                try
+                {
+                    delegate.destroy();
+                }
+                finally
+                {
+                    Thread.currentThread().setContextClassLoader( old );
+                }
+            } ).subscribeOn( reactor.core.scheduler.Schedulers.boundedElastic() )
+                    .block( TRANSPORT_SHUTDOWN_TIMEOUT );
         }
     }
 }

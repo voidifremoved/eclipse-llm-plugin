@@ -20,6 +20,7 @@
 
   <properties>
     <tycho.version>5.0.2</tycho.version>
+    <maven.compiler.release>21</maven.compiler.release>
     <maven.compiler.source>21</maven.compiler.source>
     <maven.compiler.target>21</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -230,6 +231,9 @@
         <groupId>org.eclipse.tycho</groupId>
         <artifactId>tycho-compiler-plugin</artifactId>
         <version>${tycho.version}</version>
+        <configuration>
+          <release>21</release>
+        </configuration>
       </plugin>
     </plugins>
   </build>

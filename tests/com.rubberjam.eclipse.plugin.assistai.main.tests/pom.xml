@@ -36,6 +36,10 @@
                Excluded:
                  ChatMessageFactoryTest    - requires full interactive SWT workbench -->
           <includes>
+            <include>**/ToolExecutorLifecycleTest.java</include>
+            <include>**/ToolExecutorCoercionTest.java</include>
+            <include>**/HttpMcpPreferencesTest.java</include>
+            <include>**/HttpMcpServerLifecycleTest.java</include>
             <include>**/ConversationContextTest.java</include>
             <include>**/TimeMcpServerTest.java</include>
             <include>**/HtmlToMarkdownConverterTest.java</include>
@@ -52,4 +56,15 @@
       </plugin>
     </plugins>
   </build>
+  <profiles>
+    <profile>
+      <id>macos-ui-tests</id>
+      <activation><os><family>mac</family></os></activation>
+      <build><plugins><plugin>
+        <groupId>org.eclipse.tycho</groupId>
+        <artifactId>tycho-surefire-plugin</artifactId>
+        <configuration><argLine>-XstartOnFirstThread</argLine></configuration>
+      </plugin></plugins></build>
+    </profile>
+  </profiles>
 </project>

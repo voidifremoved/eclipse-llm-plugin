@@ -10,7 +10,11 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.LinkedHashMap;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
@@ -21,13 +25,13 @@ import com.rubberjam.eclipse.assistai.mcp.annotations.ToolParam;
 import com.rubberjam.eclipse.assistai.tools.UISynchronizeCallable;
 
 /**
- * Invokes {@link Tool}-annotated methods. Eclipse workspace/JDT work must run on the SWT UI thread.
+ * Invokes {@link Tool}-annotated methods. UI-dependent tools run on SWT; explicitly background-safe tools use bounded workers.
  */
 public class ToolExecutor
 {
     private static final AtomicInteger TOOL_THREAD_COUNTER = new AtomicInteger();
 
-    private static final ExecutorService TOOL_EXECUTOR = Executors.newCachedThreadPool( new ThreadFactory()
+    private static final ExecutorService TOOL_EXECUTOR = new ThreadPoolExecutor( 2, 8, 60, TimeUnit.SECONDS, new ArrayBlockingQueue<>( 64 ), new ThreadFactory()
     {
         @Override
         public Thread newThread( Runnable runnable )
@@ -37,6 +41,8 @@ public class ToolExecutor
             return thread;
         }
     } );
+
+    private final Map<String, Method> methods = new LinkedHashMap<>();
 
     private final Object functions;
 
@@ -49,7 +55,16 @@ public class ToolExecutor
 
     public ToolExecutor( Object functions, UISynchronizeCallable uiSync )
     {
-        this.functions = functions;
+        this.functions = Objects.requireNonNull( functions );
+        Arrays.stream( functions.getClass().getMethods() )
+                .filter( method -> method.isAnnotationPresent( Tool.class ) )
+                .sorted( java.util.Comparator.comparing( ToolExecutor::toFunctionName ) )
+                .forEach( method -> {
+                    if ( methods.putIfAbsent( toFunctionName( method ), method ) != null )
+                    {
+                        throw new IllegalArgumentException( "Duplicate MCP tool: " + toFunctionName( method ) );
+                    }
+                } );
         this.uiSync = uiSync != null ? uiSync : Activator.getDefault().make( UISynchronizeCallable.class );
     }
 
@@ -61,31 +76,59 @@ public class ToolExecutor
      */
     public Method[] getFunctions()
     {
-        return Arrays.stream( functions.getClass().getDeclaredMethods() )
-                .filter( method -> Objects.nonNull( method.getAnnotation( com.rubberjam.eclipse.assistai.mcp.annotations.Tool.class ) ) )
-                .toArray( Method[]::new );
+        return methods.values().toArray( Method[]::new );
     }
 
 
 
     public CompletableFuture<Object> call( String name, Map<String, Object> args )
     {
-        ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
-        return CompletableFuture.supplyAsync( () -> {
-            Thread thread = Thread.currentThread();
-            ClassLoader oldClassLoader = thread.getContextClassLoader();
-            thread.setContextClassLoader( contextClassLoader );
-            try
+        CompletableFuture<Object> result = new CompletableFuture<>();
+        try
+        {
+            Method method = getFunctionCallbackByName( name ).orElseThrow(
+                    () -> new IllegalArgumentException( "Tool " + name + " not found" ) );
+            Object[] values = mapArguments( method, args == null ? Map.of() : args );
+            Runnable invocation = () -> {
+                // A timed-out/cancelled request still queued on SWT must not edit later.
+                if ( result.isDone() )
+                {
+                    return;
+                }
+                Thread thread = Thread.currentThread();
+                ClassLoader previous = thread.getContextClassLoader();
+                thread.setContextClassLoader( functions.getClass().getClassLoader() );
+                try
+                {
+                    result.complete( invokeMethod( method, values ) );
+                }
+                catch ( Throwable e )
+                {
+                    result.completeExceptionally( e );
+                }
+                finally
+                {
+                    thread.setContextClassLoader( previous );
+                }
+            };
+            if ( method.getAnnotation( Tool.class ).uiThread() )
             {
-                Method method = getFunctionCallbackByName( name ).orElseThrow( () -> new RuntimeException( "Tool " + name + " not found!" ) );
-                Object[] argValues = mapArguments( method, args );
-                return uiSync.syncCall( () -> invokeMethod( method, argValues ) );
+                uiSync.asyncExec( invocation );
             }
-            finally
+            else
             {
-                thread.setContextClassLoader( oldClassLoader );
+                TOOL_EXECUTOR.execute( invocation );
             }
-        }, TOOL_EXECUTOR );
+        }
+        catch ( RejectedExecutionException e )
+        {
+            result.completeExceptionally( new IllegalStateException( "MCP is busy; retry shortly", e ) );
+        }
+        catch ( RuntimeException e )
+        {
+            result.completeExceptionally( e );
+        }
+        return result;
     }
 
     private Object invokeMethod( Method method, Object[] args )
@@ -248,9 +291,7 @@ public class ToolExecutor
      */
     public Optional<Method> getFunctionCallbackByName( String name )
     {
-        return Arrays.stream( getFunctions() )
-                     .filter( method -> toFunctionName( method ).equals( name ) )
-                     .findFirst();
+        return Optional.ofNullable( methods.get( name ) );
     }
     /**
      * Converts a Parameter object to its corresponding parameter name.

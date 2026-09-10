@@ -12,5 +12,7 @@ public @interface Tool
 {
     public String name() default "";
     public String description();
+    /** Opt in only when a tool does not require SWT/editor access. */
+    public boolean uiThread() default true;
     public String type() default "object";
 }

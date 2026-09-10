@@ -95,6 +95,22 @@ public class EclipseMcpServer
     @Inject
     private PDEService pdeService;
 
+    @Tool(name = "getWorkspaceStatus", uiThread = false,
+            description = "Identify the connected Eclipse workspace after connecting or reconnecting. Returns workspace path, plugin version, open project count and build activity without waiting for the UI thread.")
+    public String getWorkspaceStatus()
+    {
+        var workspace = org.eclipse.core.resources.ResourcesPlugin.getWorkspace();
+        var projects = workspace.getRoot().getProjects();
+        long open = java.util.Arrays.stream( projects ).filter( p -> p.isOpen() ).count();
+        var jobs = org.eclipse.core.runtime.jobs.Job.getJobManager();
+        return "Workspace: " + workspace.getRoot().getLocationURI()
+                + "\nAssistAI: " + com.rubberjam.eclipse.assistai.Activator.getDefault().getBundle().getVersion()
+                + "\nProjects: " + projects.length + " (open: " + open + ")"
+                + "\nAuto-build enabled: " + workspace.isAutoBuilding()
+                + "\nBuild jobs: " + ( jobs.find( org.eclipse.core.resources.ResourcesPlugin.FAMILY_AUTO_BUILD ).length
+                        + jobs.find( org.eclipse.core.resources.ResourcesPlugin.FAMILY_MANUAL_BUILD ).length );
+    }
+
     // --- Code Editing Tools (formerly eclipse-coder) ---
 
     @Tool(name="createFile", description="Create and open a new file in a specified project. Ensure the file doesn't already exist.", type="object")

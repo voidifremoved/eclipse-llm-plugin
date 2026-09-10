@@ -60,6 +60,10 @@ public class McpHttpServerPreferencePage extends PreferencePage implements IWork
         Composite container = new Composite(parent, SWT.NONE);
         container.setLayout(new GridLayout(1, false));
 
+        Label scopeLabel = new Label(container, SWT.WRAP);
+        scopeLabel.setText("Connection settings apply to all workspaces opened by this Eclipse installation.");
+        scopeLabel.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+
         // Server Configuration Group
         createServerConfigGroup(container);
 
@@ -189,7 +193,7 @@ public class McpHttpServerPreferencePage extends PreferencePage implements IWork
     /**
      * Update the server status display
      */
-    public void updateServerStatus( boolean isRunning )
+    public void updateServerStatus( boolean isRunning, boolean enabled, String failure )
     {
         if (uiSync != null )
         {
@@ -199,7 +203,8 @@ public class McpHttpServerPreferencePage extends PreferencePage implements IWork
                 {
                     return;
                 }
-                String statusText = isRunning ? "HTTP Server is running" : "HTTP Server is disabled";
+                String statusText = isRunning ? "HTTP Server is running" : !enabled ? "HTTP Server is disabled"
+                        : failure == null ? "HTTP Server is starting" : "HTTP Server failed; retrying: " + failure;
                 statusLabel.setText(statusText);
             });
         }

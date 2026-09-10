@@ -88,7 +88,8 @@ public class McpHttpServerPreferencePresenter
             // initialize view
             view.updateHttpMcpPreferences( preferencesProvider.get() );
             view.updateHttpMcpEnbled( preferencesProvider.isEnabled() );
-            view.updateServerStatus( httpServerRegistry.isRunning() );
+            view.updateServerStatus( httpServerRegistry.isRunning(), preferencesProvider.isEnabled(),
+                    httpServerRegistry.getLastFailure() );
             view.updateEnabledEndpoints( httpServerRegistry.listEndpoints() );
         }
     }

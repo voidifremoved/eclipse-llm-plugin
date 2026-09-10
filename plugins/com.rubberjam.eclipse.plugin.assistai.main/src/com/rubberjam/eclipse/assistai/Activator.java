@@ -5,7 +5,6 @@ import org.eclipse.e4.core.contexts.EclipseContextFactory;
 import org.eclipse.e4.core.contexts.IEclipseContext;
 import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchListener;
-import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
@@ -24,7 +23,7 @@ import com.rubberjam.eclipse.assistai.preferences.prompts.PromptsPreferencePrese
 
 public class Activator extends AbstractUIPlugin
 {
-    private static Activator plugin = null;
+    private static volatile Activator plugin = null;
 
     private HttpMcpServerRegistry httpMcpServerRegistry;
 
@@ -56,7 +55,7 @@ public class Activator extends AbstractUIPlugin
 
     /**
      * Starts the MCP services and ties their lifetime to the workbench. Releasing the HTTP port
-     * in {@link IWorkbenchListener#preShutdown(IWorkbench, boolean)} ensures it is available when
+     * in {@link IWorkbenchListener#postShutdown(IWorkbench)} ensures it is available when
      * Eclipse starts the replacement workbench during a workspace switch.
      */
     public synchronized void startMcpServices()
@@ -70,24 +69,33 @@ public class Activator extends AbstractUIPlugin
         try
         {
             httpMcpServerRegistry = make( HttpMcpServerRegistry.class );
-            inMemoryMcpClientRegistry = make( InMemoryMcpClientRegistry.class );
-            inMemoryMcpClientRegistry.ensureInitialized();
+            // External clients belong to the chat UI and initialize on demand. A broken
+            // external server must never prevent agents from reaching Eclipse over HTTP.
 
             mcpWorkbenchListener = new IWorkbenchListener()
             {
                 @Override
                 public boolean preShutdown( IWorkbench shuttingDownWorkbench, boolean forced )
                 {
-                    stopMcpServices();
+                    // Another listener can still veto shutdown. Keep MCP available.
                     return true;
                 }
 
                 @Override
                 public void postShutdown( IWorkbench shutDownWorkbench )
                 {
+                    stopMcpServices();
                 }
             };
             workbench.addWorkbenchListener( mcpWorkbenchListener );
+            try
+            {
+                inMemoryMcpClientRegistry = make( InMemoryMcpClientRegistry.class );
+            }
+            catch ( RuntimeException | LinkageError e )
+            {
+                getLog().error( "MCP chat clients unavailable; HTTP tools remain available", e );
+            }
         }
         catch ( RuntimeException | Error e )
         {
@@ -180,15 +188,6 @@ public class Activator extends AbstractUIPlugin
             if ( PlatformUI.isWorkbenchRunning() )
             {
                 IWorkbench workbench = PlatformUI.getWorkbench();
-                IWorkbenchWindow window = workbench.getActiveWorkbenchWindow();
-                if ( window != null )
-                {
-                    IEclipseContext windowContext = window.getService( IEclipseContext.class );
-                    if ( windowContext != null )
-                    {
-                        return windowContext;
-                    }
-                }
                 IEclipseContext workbenchContext = workbench.getService( IEclipseContext.class );
                 if ( workbenchContext != null )
                 {

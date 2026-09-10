@@ -289,9 +289,9 @@ public class McpServerRepository
         try
         {
             Class<?> clazz = findImplementation( serverName );
-            return Stream.of( clazz.getDeclaredMethods() )
+            return Stream.of( clazz.getMethods() )
                     .filter( m -> m.isAnnotationPresent( com.rubberjam.eclipse.assistai.mcp.annotations.Tool.class ) )
-                    .map( m -> m.getAnnotation( com.rubberjam.eclipse.assistai.mcp.annotations.Tool.class ).name() )
+                    .map( ToolExecutor::toFunctionName )
                     .sorted()
                     .collect( Collectors.toList() );
         }

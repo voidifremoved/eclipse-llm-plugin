@@ -1,56 +1,109 @@
 package com.rubberjam.eclipse.assistai.mcp.http;
 
+import java.util.UUID;
+import org.eclipse.core.runtime.preferences.ConfigurationScope;
+import org.eclipse.core.runtime.preferences.IEclipsePreferences;
 import org.eclipse.e4.core.di.annotations.Creatable;
 import org.eclipse.jface.preference.IPreferenceStore;
-
+import org.osgi.service.prefs.BackingStoreException;
 import com.rubberjam.eclipse.assistai.Activator;
-
+import com.rubberjam.eclipse.assistai.preferences.PreferenceConstants;
 import jakarta.inject.Singleton;
 
+/** Connection settings follow the Eclipse installation across workspace switches. */
 @Creatable
 @Singleton
 public class HttpMcpServerPreferencesProvider
 {
-    public HttpMcpServerPreferences get()
+    private static final String[] KEYS = {
+        PreferenceConstants.ASSISTAI_MCP_HTTP_HOSTNAME,
+        PreferenceConstants.ASSISTAI_MCP_HTTP_PORT,
+        PreferenceConstants.ASSISTAI_MCP_HTTP_AUTH_TOKEN,
+        PreferenceConstants.ASSISTAI_MCP_HTTP_ENABLED
+    };
+
+    private IEclipsePreferences preferences()
     {
-        IPreferenceStore preferenceStore = Activator.getDefault().getPreferenceStore();
-
-        String hostname = preferenceStore.getString(com.rubberjam.eclipse.assistai.preferences.PreferenceConstants.ASSISTAI_MCP_HTTP_HOSTNAME);
-        int port = preferenceStore.getInt(com.rubberjam.eclipse.assistai.preferences.PreferenceConstants.ASSISTAI_MCP_HTTP_PORT);
-        String token = preferenceStore.getString(com.rubberjam.eclipse.assistai.preferences.PreferenceConstants.ASSISTAI_MCP_HTTP_AUTH_TOKEN);
-
-        return new HttpMcpServerPreferences(port, hostname, token);
+        var plugin = Activator.getDefault();
+        var preferences = ConfigurationScope.INSTANCE.getNode( plugin.getBundle().getSymbolicName() );
+        migrate( preferences, plugin.getPreferenceStore() );
+        return preferences;
     }
 
-    public void save(HttpMcpServerPreferences preferences)
+    static synchronized void migrate( IEclipsePreferences target, IPreferenceStore legacy )
     {
-        IPreferenceStore preferenceStore = Activator.getDefault().getPreferenceStore();
+        boolean changed = false;
+        for ( String key : KEYS )
+        {
+            if ( target.get( key, null ) == null )
+            {
+                String value = legacy.getString( key );
+                if ( key.equals( PreferenceConstants.ASSISTAI_MCP_HTTP_AUTH_TOKEN )
+                        && ( !legacy.contains( key ) || legacy.isDefault( key ) ) && value.isBlank() )
+                {
+                    value = UUID.randomUUID().toString();
+                }
+                target.put( key, value );
+                changed = true;
+            }
+        }
+        if ( changed )
+        {
+            flush( target );
+        }
+    }
 
-        preferenceStore.setValue(com.rubberjam.eclipse.assistai.preferences.PreferenceConstants.ASSISTAI_MCP_HTTP_HOSTNAME, preferences.hostname());
-        preferenceStore.setValue(com.rubberjam.eclipse.assistai.preferences.PreferenceConstants.ASSISTAI_MCP_HTTP_PORT, preferences.port());
-        preferenceStore.setValue(com.rubberjam.eclipse.assistai.preferences.PreferenceConstants.ASSISTAI_MCP_HTTP_AUTH_TOKEN, preferences.token());
+    private static void flush( IEclipsePreferences preferences )
+    {
+        try
+        {
+            preferences.flush();
+        }
+        catch ( BackingStoreException e )
+        {
+            throw new IllegalStateException( "Cannot persist installation-wide MCP settings", e );
+        }
+    }
+
+    public HttpMcpServerPreferences get()
+    {
+        var preferences = preferences();
+        return new HttpMcpServerPreferences(
+                preferences.getInt( KEYS[1], 27417 ),
+                preferences.get( KEYS[0], "localhost" ),
+                preferences.get( KEYS[2], "" ) );
+    }
+
+    public void save( HttpMcpServerPreferences settings )
+    {
+        if ( settings.port() < 1 || settings.port() > 65535 || settings.hostname() == null
+                || settings.hostname().isBlank() )
+        {
+            throw new IllegalArgumentException( "MCP requires a hostname and port between 1 and 65535" );
+        }
+        var preferences = preferences();
+        preferences.put( KEYS[0], settings.hostname().trim() );
+        preferences.putInt( KEYS[1], settings.port() );
+        preferences.put( KEYS[2], settings.token() == null ? "" : settings.token() );
+        flush( preferences );
     }
 
     public boolean isEnabled()
     {
-        IPreferenceStore preferenceStore = Activator.getDefault().getPreferenceStore();
-        return preferenceStore.getBoolean(com.rubberjam.eclipse.assistai.preferences.PreferenceConstants.ASSISTAI_MCP_HTTP_ENABLED);
+        return preferences().getBoolean( KEYS[3], true );
     }
 
-    public void setEnabled(boolean enabled)
+    public void setEnabled( boolean enabled )
     {
-        IPreferenceStore preferenceStore = Activator.getDefault().getPreferenceStore();
-        preferenceStore.setValue(com.rubberjam.eclipse.assistai.preferences.PreferenceConstants.ASSISTAI_MCP_HTTP_ENABLED, enabled);
+        var preferences = preferences();
+        preferences.putBoolean( KEYS[3], enabled );
+        flush( preferences );
     }
 
     public void resetToDefaults()
     {
-        IPreferenceStore preferenceStore = Activator.getDefault().getPreferenceStore();
-
-        preferenceStore.setToDefault(com.rubberjam.eclipse.assistai.preferences.PreferenceConstants.ASSISTAI_MCP_HTTP_HOSTNAME);
-        preferenceStore.setToDefault(com.rubberjam.eclipse.assistai.preferences.PreferenceConstants.ASSISTAI_MCP_HTTP_PORT);
-        preferenceStore.setToDefault(com.rubberjam.eclipse.assistai.preferences.PreferenceConstants.ASSISTAI_MCP_HTTP_AUTH_TOKEN);
-        preferenceStore.setToDefault(com.rubberjam.eclipse.assistai.preferences.PreferenceConstants.ASSISTAI_MCP_HTTP_ENABLED);
+        // Preserve credentials so restoring defaults does not disconnect configured agents.
+        save( new HttpMcpServerPreferences( 27417, "localhost", get().token() ) );
+        setEnabled( true );
     }
-
 }
